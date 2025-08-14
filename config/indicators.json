@@ -1,0 +1,99 @@
+{
+    "categories": [
+        {
+            "id": "technical",
+            "name": "爆破质量指标",
+            "indicators": [
+                {
+                    "id": "technical_1",
+                    "name": "大块率",
+                    "unit": "%",
+                    "description": "",
+                    "is_positive": true
+                },
+                {
+                    "id": "technical_2",
+                    "name": "根底率",
+                    "unit": "%",
+                    "description": "",
+                    "is_positive": true
+                },
+                {
+                    "id": "technical_3",
+                    "name": "后冲距离",
+                    "unit": "m",
+                    "description": "",
+                    "is_positive": true
+                },
+                {
+                    "id": "technical_4",
+                    "name": "前冲距离",
+                    "unit": "m",
+                    "description": "",
+                    "is_positive": true
+                },
+                {
+                    "id": "technical_5",
+                    "name": "抛掷率",
+                    "unit": "%",
+                    "description": "",
+                    "is_positive": true
+                },
+                {
+                    "id": "technical_6",
+                    "name": "松散系数",
+                    "unit": "",
+                    "description": "",
+                    "is_positive": true
+                },
+                {
+                    "id": "technical_7",
+                    "name": "爆堆高度",
+                    "unit": "m",
+                    "description": "",
+                    "is_positive": true
+                }
+            ]
+        },
+        {
+            "id": "safety",
+            "name": "爆破安全指标",
+            "indicators": [
+                {
+                    "id": "safety_1",
+                    "name": "飞石最远距离",
+                    "unit": "m",
+                    "description": "",
+                    "is_positive": false
+                },
+                {
+                    "id": "safety_2",
+                    "name": "爆破振动速度",
+                    "unit": "cm/s",
+                    "description": "",
+                    "is_positive": false
+                }
+            ]
+        },
+        {
+            "id": "economic",
+            "name": "爆破经济指标",
+            "indicators": [
+                {
+                    "id": "economic_1",
+                    "name": "炸药单耗",
+                    "unit": "kg/m³",
+                    "description": "",
+                    "is_positive": false
+                },
+                {
+                    "id": "economic_2",
+                    "name": "延米爆破量",
+                    "unit": "m³/m",
+                    "description": "",
+                    "is_positive": false
+                }
+            ]
+        }
+    ]
+}

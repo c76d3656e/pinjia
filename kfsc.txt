@@ -1,0 +1,586 @@
+# 露天台阶爆破效果综合评价系统开发手册
+
+## 1. 项目概述
+
+### 1.1 项目简介
+露天台阶爆破效果综合评价系统是一个基于Python和Remi框架开发的Web应用程序，用于对露天台阶爆破效果进行综合评价。系统采用多步骤向导式界面，引导用户完成从指标选择到最终评价的全过程。
+
+### 1.2 技术架构
+- **前端框架**: Rio (Python GUI框架 https://rio.dev/docs/api  github仓库 https://github.com/rio-labs/rio)
+- **后端语言**: Python 3.10
+- **数据存储**: JSON文件配置 + 内存数据结构
+- **数学计算**: NumPy
+- **架构模式**: MVC (Model-View-Controller)
+
+### 1.3 系统功能
+1. 评价体系构建 - 指标选择和树状图显示
+2. 指标权重计算 - 支持AHP、熵权法、专家打分法
+3. 指标范围设置 - 设定优良中差评价标准
+4. 实测值输入 - 录入实际测量数据
+5. 综合评价 - 计算最终评价结果并生成报告
+
+## 2. 项目结构
+
+```
+baopoapp/
+├── main.py                    # 应用程序入口
+├── requirements.txt           # 依赖包列表
+├── config/                    # 配置文件目录
+│   ├── indicators.json        # 指标体系配置
+│   └── settings.ini           # 应用设置
+├── logs/                      # 日志文件目录
+├── src/                       # 源代码目录
+│   ├── app.py                 # 主应用类
+│   ├── controllers/           # 控制器模块
+│   │   └── evaluation_controller.py
+│   ├── models/                # 数据模型
+│   │   ├── indicators.py      # 指标模型
+│   │   └── evaluation.py      # 评价模型
+│   ├── utils/                 # 工具模块
+│   │   ├── config.py          # 配置管理
+│   │   ├── logger.py          # 日志管理
+│   │   └── report.py          # 报告生成
+│   └── views/                 # 视图模块
+│       ├── main_view.py       # 主视图
+│       └── step_views.py      # 步骤视图
+└── tests/                     # 测试文件
+```
+
+## 3. 核心模块详解
+
+### 3.1 应用入口模块 (main.py)
+
+**功能职责:**
+- 系统启动入口
+- 配置加载和初始化
+- 日志系统设置
+- Remi服务器启动
+
+**关键参数:**
+- host: 服务器绑定地址 (默认: 0.0.0.0)
+- port: 服务器端口 (默认: 8080)
+- start_browser: 是否自动打开浏览器 (默认: True)
+
+**数据流:**
+1. 加载配置文件 (config/settings.ini)
+2. 初始化日志记录器
+3. 创建BlastingEvaluationApp实例
+4. 启动Remi服务器
+
+### 3.2 主应用类 (src/app.py)
+
+**类名:** BlastingEvaluationApp
+**继承:** remi.App
+
+**功能职责:**
+- 应用程序主控制器
+- 管理应用状态和生命周期
+- 协调视图与控制器交互
+
+**核心属性:**
+- config: 应用配置对象
+- main_view: 主视图实例
+- evaluation_controller: 评价控制器实例
+- current_step: 当前步骤编号
+- 各种状态变量 (selected_indicators, indicator_weights等)
+
+**关键方法:**
+- main(): 构建应用界面，返回主视图
+- run(): 启动应用服务器
+
+**数据流:**
+1. 初始化评价控制器
+2. 创建主视图并传入控制器
+3. 加载指标体系
+4. 构建并返回主界面
+
+### 3.3 评价控制器 (src/controllers/evaluation_controller.py)
+
+**类名:** EvaluationController
+
+**功能职责:**
+- 指标体系管理 (加载、保存、CRUD操作)
+- 权重计算算法实现
+- 综合评价计算
+- 数据验证和处理
+
+**核心属性:**
+- config_path: 指标配置文件路径
+- indicator_categories: 指标分类列表
+- all_indicators: 所有指标字典 {id: Indicator}
+- selected_indicators: 选中的指标列表
+- evaluation_model: 评价模型实例
+
+**关键方法:**
+
+1. **_load_indicators()**: 加载指标体系
+   - 读取config/indicators.json
+   - 解析JSON数据为Indicator和IndicatorCategory对象
+   - 建立指标与分类的关联关系
+   - 异常处理：文件不存在时创建默认指标体系
+
+2. **_create_default_indicators()**: 创建默认指标体系
+   - 定义默认的指标分类和指标
+   - 包含安全指标、经济指标、技术指标、环境指标
+   - 自动保存到配置文件
+
+3. **calculate_weights()**: 权重计算主方法
+   - 参数:
+     * method: 计算方法 ('AHP', 'Entropy', 'Expert')
+     * category_weights: 一级指标权重 {category_id: weight}
+     * indicator_weights: 二级指标权重 {category_id: {indicator_id: weight}}
+     * matrix: 判断矩阵 (AHP方法使用)
+   - 返回: {indicator_id: final_weight}
+   - 调用_calculate_hierarchical_weights()进行分层计算
+
+4. **_calculate_hierarchical_weights()**: 分层权重计算
+   - 按分类组织指标
+   - 计算一级指标(分类)权重
+   - 计算二级指标权重
+   - 合成最终权重 = 一级权重 × 二级权重
+
+5. **update_selected_indicators()**: 更新选中指标
+   - 保存选中的指标列表
+   - 同步到评价模型
+
+**数据流:**
+指标选择 → 权重计算 → 范围设置 → 实测值输入 → 综合评价
+
+### 3.4 数据模型 (src/models/)
+
+#### 3.4.1 指标模型 (indicators.py)
+
+**Indicator类:**
+- id: 指标唯一标识
+- name: 指标名称
+- category: 所属分类 (IndicatorCategory对象)
+- unit: 计量单位
+- description: 指标描述
+- is_positive: 是否为正向指标 (True=越大越好, False=越小越好)
+
+**IndicatorCategory类:**
+- id: 分类唯一标识
+- name: 分类名称
+- description: 分类描述
+- indicators: 包含的指标列表
+- add_indicator(): 添加指标到分类
+
+#### 3.4.2 评价模型 (evaluation.py)
+
+**EvaluationModel类:**
+- indicators: 参与评价的指标列表
+- weights: 指标权重字典 {indicator_id: weight}
+- ranges: 指标范围字典 {indicator_id: [min_good, max_good, ...]}
+- measured_values: 实测值字典 {indicator_id: value}
+
+**关键方法:**
+- set_indicators(): 设置参与评价的指标
+- set_weights(): 设置指标权重
+- set_ranges(): 设置指标评价范围
+- set_measured_values(): 设置实测值
+- get_indicator_by_id(): 根据ID获取指标对象
+
+### 3.5 视图模块 (src/views/)
+
+#### 3.5.1 主视图 (main_view.py)
+
+**MainView类:**
+
+**功能职责:**
+- 管理多步骤向导界面
+- 步骤导航和切换
+- 集成各步骤视图
+
+**核心属性:**
+- controller: 评价控制器引用
+- current_step: 当前步骤编号
+- step_views: 步骤视图字典 {step_num: StepView}
+- step_content: 步骤内容容器
+- 导航按钮 (prev_button, next_button, finish_button)
+- step_indicators: 步骤指示器列表
+
+**关键方法:**
+
+1. **build()**: 构建主界面
+   - 创建标题和步骤导航
+   - 创建步骤内容容器
+   - 创建导航按钮
+   - 初始显示第一步
+
+2. **_build_step_navigation()**: 构建步骤导航条
+   - 创建5个步骤指示器
+   - 设置步骤标题和样式
+   - 高亮当前步骤
+
+3. **update_step()**: 更新当前步骤
+   - 清空步骤内容容器
+   - 加载对应步骤视图
+   - 更新导航按钮状态
+   - 更新步骤指示器样式
+   - 特殊处理：步骤2添加"计算权重"按钮
+
+4. **_on_prev_click()**: 上一步按钮事件
+   - 验证当前步骤
+   - 切换到上一步
+
+5. **_on_next_click()**: 下一步按钮事件
+   - 验证当前步骤数据
+   - 切换到下一步
+
+6. **_on_finish_click()**: 完成按钮事件
+   - 最终数据验证
+   - 生成评价报告
+
+#### 3.5.2 步骤视图 (step_views.py)
+
+**Step1View - 评价体系构建:**
+
+**功能职责:**
+- 显示指标选择界面
+- 处理指标选择事件
+- 更新树状图显示
+
+**核心方法:**
+- build(): 构建左右分栏布局 (指标选择 + 树状图)
+- _build_indicator_selection(): 构建指标选择区
+- _build_tree_view(): 构建树状图显示区
+- _on_indicator_change(): 指标选择变化事件
+- _update_tree_display(): 更新树状图显示
+- validate(): 验证至少选择一个指标
+
+**数据流:**
+用户勾选指标 → 更新selected_indicators → 刷新树状图 → 传递给控制器
+
+**Step2View - 指标权重计算:**
+
+**功能职责:**
+- 权重计算方法选择
+- 权重输入界面管理
+- 权重计算结果显示
+
+**核心属性:**
+- weight_method: 当前选择的权重计算方法
+- matrix_inputs: 判断矩阵输入框字典
+- category_inputs: 一级指标权重输入框字典
+- weight_results: 权重计算结果
+- current_view: 当前视图状态 ('input' 或 'result')
+- input_container: 权重设置输入容器
+- result_container: 权重结果显示容器
+
+**关键方法:**
+
+1. **build()**: 构建权重设置界面
+   - 创建方法选择下拉框
+   - 构建输入和结果容器
+   - 默认显示输入视图
+
+2. **_build_input_container()**: 构建权重设置输入容器
+   - 方法选择区域
+   - 权重输入区域
+
+3. **_build_weight_input()**: 构建权重输入界面
+   - 根据选中指标动态生成输入表格
+   - 一级指标权重输入
+   - 二级指标权重输入
+   - 添加"计算权重"按钮
+
+4. **_on_calculate_weights()**: 权重计算事件处理
+   - 收集用户输入的权重数据
+   - 调用控制器计算权重
+   - 显示计算结果
+
+5. **_display_weight_results()**: 显示权重计算结果
+   - 切换到结果视图
+   - 显示权重详情表格
+   - 提供重新设置按钮
+
+6. **_on_reset_weights()**: 重新设置权重
+   - 清空权重结果
+   - 切换回输入视图
+
+**数据流:**
+选择方法 → 输入权重 → 计算权重 → 显示结果 → 保存到评价模型
+
+**Step3View - 指标范围设置:**
+
+**功能职责:**
+- 设置各指标的评价范围
+- 定义优良中差的数值区间
+
+**核心方法:**
+- build(): 构建范围设置表格
+- _create_range_inputs(): 创建范围输入控件
+- _on_range_change(): 范围值变化事件
+- validate(): 验证范围设置的合理性
+
+**Step4View - 实测值输入:**
+
+**功能职责:**
+- 录入各指标的实际测量值
+- 数据验证和格式检查
+
+**核心方法:**
+- build(): 构建实测值输入表格
+- _create_value_inputs(): 创建数值输入控件
+- _on_value_change(): 实测值变化事件
+- validate(): 验证实测值的有效性
+
+**Step5View - 综合评价:**
+
+**功能职责:**
+- 执行综合评价计算
+- 显示评价结果
+- 生成评价报告
+
+**核心方法:**
+- build(): 构建评价结果显示界面
+- _calculate_evaluation(): 执行综合评价计算
+- _display_results(): 显示评价结果
+- _generate_report(): 生成评价报告
+
+### 3.6 工具模块 (src/utils/)
+
+#### 3.6.1 配置管理 (config.py)
+
+**ConfigManager类:**
+
+**功能职责:**
+- 应用配置文件管理
+- 默认配置创建
+- 配置读取和保存
+
+**核心方法:**
+- _load_config(): 加载配置文件
+- _create_default_config(): 创建默认配置
+- get(): 获取配置值
+- set(): 设置配置值
+- save(): 保存配置到文件
+
+**配置项:**
+- App: 应用基本信息 (标题、版本、主题等)
+- Server: 服务器配置 (主机、端口、浏览器启动等)
+- Evaluation: 评价相关配置 (默认方法、精度等)
+- UI: 界面配置 (样式、布局等)
+
+#### 3.6.2 日志管理 (logger.py)
+
+**功能职责:**
+- 统一日志记录
+- 日志格式化
+- 日志文件管理
+
+**关键功能:**
+- 控制台和文件双重输出
+- 日志级别控制
+- 日志文件轮转
+
+#### 3.6.3 报告生成 (report.py)
+
+**功能职责:**
+- 评价报告生成
+- 数据可视化
+- 报告导出
+
+## 4. 数据流和模块交互
+
+### 4.1 整体数据流
+
+```
+用户操作 → 视图层 → 控制器层 → 模型层 → 数据存储
+    ↑                                      ↓
+    ←——————————— 结果反馈 ←——————————————————————
+```
+
+### 4.2 关键数据传递路径
+
+**指标选择流程:**
+1. Step1View收集用户选择 → selected_indicators列表
+2. 调用controller.update_selected_indicators()
+3. 控制器更新evaluation_model.indicators
+4. 其他步骤通过controller.selected_indicators访问
+
+**权重计算流程:**
+1. Step2View收集权重输入 → category_weights, indicator_weights
+2. 调用controller.calculate_weights(method, weights)
+3. 控制器执行权重计算算法
+4. 结果保存到evaluation_model.weights
+5. 返回计算结果给视图显示
+
+**评价计算流程:**
+1. Step3View设置ranges → evaluation_model.ranges
+2. Step4View设置measured_values → evaluation_model.measured_values
+3. Step5View调用综合评价算法
+4. 基于weights, ranges, measured_values计算最终评价
+
+### 4.3 模块间接口规范
+
+**控制器接口:**
+- get_indicator_categories() → List[IndicatorCategory]
+- update_selected_indicators(indicators: List[Indicator])
+- calculate_weights(method, **kwargs) → Dict[str, float]
+- set_indicator_ranges(ranges: Dict[str, List[float]])
+- set_measured_values(values: Dict[str, float])
+- calculate_evaluation() → EvaluationResult
+
+**视图接口:**
+- build() → gui.Widget
+- validate() → bool
+- get_data() → Dict
+- set_data(data: Dict)
+
+## 5. 配置文件格式
+
+### 5.1 指标配置 (config/indicators.json)
+
+```json
+{
+  "categories": [
+    {
+      "id": "safety",
+      "name": "安全指标",
+      "indicators": [
+        {
+          "id": "safety_1",
+          "name": "飞石距离",
+          "unit": "m",
+          "description": "爆破产生的飞石最远距离",
+          "is_positive": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 5.2 应用配置 (config/settings.ini)
+
+```ini
+[App]
+Title = 露天台阶爆破效果综合评价系统
+Version = 1.0.0
+Theme = default
+Language = zh_CN
+Debug = False
+
+[Server]
+Host = 0.0.0.0
+Port = 8080
+StartBrowser = True
+
+[Evaluation]
+DefaultMethod = AHP
+Precision = 4
+MinIndicators = 1
+```
+
+## 6. 开发指南
+
+### 6.1 环境搭建
+
+1. **Python环境**: Python 3.7+
+2. **依赖安装**: `pip install -r requirements.txt`
+3. **配置文件**: 确保config目录存在
+4. **启动应用**: `python main.py`
+
+### 6.2 添加新指标
+
+1. 修改config/indicators.json
+2. 添加新的指标定义
+3. 重启应用自动加载
+
+### 6.3 扩展权重计算方法
+
+1. 在EvaluationController中添加新的计算方法
+2. 修改Step2View的方法选择下拉框
+3. 实现对应的权重计算算法
+
+### 6.4 自定义评价算法
+
+1. 在EvaluationController中添加新的评价方法
+2. 修改Step5View调用新的评价方法
+3. 更新结果显示格式
+
+### 6.5 界面定制
+
+1. 修改各StepView的build()方法
+2. 调整CSS样式
+3. 添加新的UI组件
+
+## 7. 常见问题和解决方案
+
+### 7.1 权重计算问题
+
+**问题**: 权重和不等于1
+**解决**: 在权重计算后进行归一化处理
+
+**问题**: 判断矩阵一致性检验
+**解决**: 实现CR一致性比率检验
+
+### 7.2 数据验证问题
+
+**问题**: 用户输入无效数据
+**解决**: 在各步骤的validate()方法中添加严格验证
+
+**问题**: 指标范围设置不合理
+**解决**: 添加范围合理性检查 (最小值 < 最大值等)
+
+### 7.3 界面响应问题
+
+**问题**: 大量指标时界面卡顿
+**解决**: 实现分页或虚拟滚动
+
+**问题**: 权重计算耗时长
+**解决**: 添加进度条和异步计算
+
+## 8. 扩展建议
+
+### 8.1 功能扩展
+
+1. **数据库支持**: 替换JSON文件存储为数据库
+2. **用户管理**: 添加用户登录和权限管理
+3. **历史记录**: 保存评价历史和对比分析
+4. **数据导入导出**: 支持Excel等格式
+5. **可视化增强**: 添加图表和统计分析
+
+### 8.2 性能优化
+
+1. **缓存机制**: 缓存计算结果
+2. **异步处理**: 长时间计算使用异步
+3. **前端优化**: 减少DOM操作
+4. **数据压缩**: 优化数据传输
+
+### 8.3 部署优化
+
+1. **Docker容器化**: 简化部署流程
+2. **反向代理**: 使用Nginx提高性能
+3. **HTTPS支持**: 增强安全性
+4. **监控告警**: 添加系统监控
+
+## 9. 维护说明
+
+### 9.1 日志监控
+
+- 日志文件位置: logs/blasting_evaluation.log
+- 日志级别: DEBUG, INFO, WARNING, ERROR
+- 关键监控点: 权重计算、数据验证、文件操作
+
+### 9.2 备份策略
+
+- 配置文件备份: config/目录定期备份
+- 用户数据备份: 如果添加数据库，需要定期备份
+- 代码版本控制: 使用Git管理代码版本
+
+### 9.3 更新流程
+
+1. 测试环境验证
+2. 备份现有配置和数据
+3. 部署新版本
+4. 验证功能正常
+5. 监控运行状态
+
+---
+
+**文档版本**: 1.0
+**最后更新**: 2025年1月
+**维护人员**: 开发团队
+**联系方式**: [待补充]
