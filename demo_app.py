@@ -80,6 +80,90 @@ def load_indicators():
         traceback.print_exc()
     return False
 
+def calculate_fahp_weights(matrix: List[List[float]]) -> Optional[List[float]]:
+    """计算FAHP模糊层次分析法权重"""
+    try:
+        matrix = np.array(matrix, dtype=float)
+        n = matrix.shape[0]
+        
+        print(f"输入矩阵: {matrix}")
+        
+        # 验证矩阵是否为模糊互补判断矩阵
+        for i in range(n):
+            for j in range(n):
+                if i == j and abs(matrix[i][j] - 0.5) > 1e-6:
+                    print(f"警告: 对角线元素应为0.5，但matrix[{i}][{j}] = {matrix[i][j]}")
+                    matrix[i][j] = 0.5
+                elif i != j and abs(matrix[i][j] + matrix[j][i] - 1.0) > 1e-6:
+                    print(f"警告: 互补性不满足，matrix[{i}][{j}] + matrix[{j}][{i}] = {matrix[i][j] + matrix[j][i]}")
+        
+        # 步骤1：计算行和
+        row_sums = np.sum(matrix, axis=1)
+        print(f"行和: {row_sums}")
+        
+        # 步骤2：计算权重向量
+        # wi = (1/n) * (Σrij - (n-1)/2)
+        weights = (row_sums - (n - 1) / 2) / n
+        print(f"原始权重: {weights}")
+        
+        # 步骤3：归一化权重（确保权重和为1且权重为正）
+        # 如果存在负权重，进行调整
+        min_weight = np.min(weights)
+        if min_weight < 0:
+            weights = weights - min_weight + 1e-6
+        
+        weights = weights / np.sum(weights)
+        print(f"归一化权重: {weights}")
+        
+        # 步骤4：一致性检验
+        ci = calculate_fahp_consistency(matrix, weights)
+        
+        print(f"FAHP权重计算完成: weights={weights}, CI={ci}")
+        
+        return weights.tolist(), ci
+    except Exception as e:
+        print(f"FAHP权重计算错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+def calculate_fahp_consistency(matrix: np.ndarray, weights: np.ndarray) -> float:
+    """计算FAHP一致性指标 - 基于相容性指标I(A,W*)"""
+    try:
+        n = matrix.shape[0]
+        
+        # 计算特征矩阵W*
+        # W*ij = 0.5 + (wi - wj)
+        W_star = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                W_star[i][j] = 0.5 + (weights[i] - weights[j])
+        
+        print(f"特征矩阵W*: {W_star}")
+        
+        # 计算相容性指标I(A,W*)
+        # I(A,W*) = (1/(n*(n-1))) * Σ|aij - w*ij|
+        diff_matrix = np.abs(matrix - W_star)
+        
+        # 排除对角线元素（i=j时）
+        total_diff = 0
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    total_diff += diff_matrix[i][j]
+        
+        consistency_index = total_diff / (n * (n - 1))
+        
+        print(f"差异矩阵: {diff_matrix}")
+        print(f"相容性指标I(A,W*): {consistency_index}")
+        
+        return consistency_index
+    except Exception as e:
+        print(f"一致性计算错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1.0
+
 def calculate_ahp_weights(matrix: List[List[float]]) -> Optional[List[float]]:
     """计算AHP权重"""
     try:
@@ -344,6 +428,51 @@ def calculate_weights():
                 app_state['selected_indicators'][i]['id']: weight_values[i]
                 for i in range(n)
             }
+            
+        elif method == 'fahp':
+            # FAHP模糊层次分析法
+            level1_matrix = data.get('level1_matrix', [])
+            level2_matrices = data.get('level2_matrices', {})
+            
+            # 计算一级指标权重
+            if len(level1_matrix) != 3 or any(len(row) != 3 for row in level1_matrix):
+                return jsonify({
+                    'success': False,
+                    'message': '一级指标判断矩阵维度应为 3x3'
+                })
+            
+            level1_weights, level1_ci = calculate_fahp_weights(level1_matrix)
+            if level1_weights is None:
+                return jsonify({
+                    'success': False,
+                    'message': 'FAHP一级指标权重计算失败'
+                })
+            
+            # 计算二级指标权重并合成最终权重
+            final_weights = {}
+            categories = ['technical', 'safety', 'economic']
+            
+            for i, category in enumerate(categories):
+                if category in level2_matrices:
+                    level2_matrix = level2_matrices[category]
+                    level2_weights, level2_ci = calculate_fahp_weights(level2_matrix)
+                    
+                    if level2_weights is None:
+                        return jsonify({
+                            'success': False,
+                            'message': f'{category}类别二级指标权重计算失败'
+                        })
+                    
+                    # 获取该类别下的指标
+                    category_indicators = [ind for ind in app_state['selected_indicators'] 
+                                         if ind['id'].startswith(category)]
+                    
+                    # 计算最终权重（一级权重 × 二级权重）
+                    for j, indicator in enumerate(category_indicators):
+                        if j < len(level2_weights):
+                            final_weights[indicator['id']] = level1_weights[i] * level2_weights[j]
+            
+            weights = final_weights
         
         else:
             return jsonify({
@@ -363,6 +492,82 @@ def calculate_weights():
         return jsonify({
             'success': False,
             'message': f'权重计算失败: {str(e)}'
+        })
+
+@app.route('/api/weights/fahp/level1', methods=['POST'])
+def calculate_fahp_level1():
+    """计算FAHP一级指标权重"""
+    try:
+        data = request.get_json()
+        matrix = data.get('matrix', [])
+        
+        if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
+            return jsonify({
+                'success': False,
+                'message': '一级指标判断矩阵维度应为 3x3'
+            })
+        
+        weights, ci = calculate_fahp_weights(matrix)
+        if weights is None:
+            return jsonify({
+                'success': False,
+                'message': 'FAHP一级指标权重计算失败'
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'weights': weights,
+                'ci': ci,
+                'matrix': matrix
+            },
+            'message': 'FAHP一级指标权重计算完成'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'FAHP一级指标权重计算失败: {str(e)}'
+        })
+
+@app.route('/api/weights/fahp/level2', methods=['POST'])
+def calculate_fahp_level2():
+    """计算FAHP二级指标权重"""
+    try:
+        data = request.get_json()
+        category = data.get('category', '')
+        matrix = data.get('matrix', [])
+        indicators = data.get('indicators', [])
+        
+        n = len(matrix)
+        if n == 0 or any(len(row) != n for row in matrix):
+            return jsonify({
+                'success': False,
+                'message': f'二级指标判断矩阵维度不正确'
+            })
+        
+        weights, ci = calculate_fahp_weights(matrix)
+        if weights is None:
+            return jsonify({
+                'success': False,
+                'message': f'{category}类别二级指标权重计算失败'
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'category': category,
+                'weights': weights,
+                'ci': ci,
+                'indicators': indicators
+            },
+            'message': f'{category}类别二级指标权重计算完成'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'FAHP二级指标权重计算失败: {str(e)}'
         })
 
 @app.route('/api/ranges/set', methods=['POST'])
