@@ -1,0 +1,119 @@
+<!-- 步骤4: 实测值输入组件 -->
+<div id="step4" class="tab-pane">
+    <div class="card">
+        <div class="card-header">
+            <h3>输入实测值</h3>
+        </div>
+        <div class="card-body">
+            <p class="mb-3">请输入各指标的实测值：</p>
+            <div id="data-form"></div>
+            <div class="mt-3">
+                <button class="btn btn-primary" onclick="submitData()">提交数据</button>
+            </div>
+            <div id="step4-result"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 实测值输入相关的JavaScript函数
+
+// 生成数据输入表单
+function generateDataForm() {
+    const formDiv = document.getElementById('data-form');
+    let html = '';
+    
+    if (selectedIndicators.length === 0) {
+        html = '<div class="alert alert-warning">请先选择指标</div>';
+    } else if (Object.keys(currentRanges).length === 0) {
+        html = '<div class="alert alert-warning">请先设置指标范围</div>';
+    } else {
+        html = '<div class="table-responsive">';
+        html += '<table class="table table-bordered">';
+        html += '<thead class="table-light">';
+        html += '<tr>';
+        html += '<th style="width: 40%;">评价指标</th>';
+        html += '<th style="width: 60%;">实测值</th>';
+        html += '</tr>';
+        html += '</thead>';
+        html += '<tbody>';
+        
+        selectedIndicators.forEach(indicator => {
+            const range = currentRanges[indicator.id];
+            if (!range) return;
+            
+            const indicatorNameWithUnit = indicator.unit ? `${indicator.name}(${indicator.unit})` : indicator.name;
+            
+            html += '<tr>';
+            html += `<td><strong>${indicatorNameWithUnit}</strong></td>`;
+            html += '<td>';
+            html += `<input type="number" class="form-control" id="data-${indicator.id}" placeholder="请输入实测值" step="0.01">`;
+            html += '</td>';
+            html += '</tr>';
+        });
+        
+        html += '</tbody>';
+        html += '</table>';
+        html += '</div>';
+    }
+    
+    formDiv.innerHTML = html;
+}
+
+// 提交实测数据
+async function submitData() {
+    const data = {};
+    let hasError = false;
+    
+    selectedIndicators.forEach(indicator => {
+        const input = document.getElementById(`data-${indicator.id}`);
+        
+        if (!input) {
+            hasError = true;
+            return;
+        }
+        
+        const value = parseFloat(input.value);
+        
+        if (isNaN(value)) {
+            showAlert(`请为指标"${indicator.name}"输入有效的数值`, 'warning');
+            hasError = true;
+            return;
+        }
+        
+        data[indicator.id] = value;
+    });
+    
+    if (hasError) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/data/submit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                measured_values: data
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentData = data;
+            showAlert(result.message, 'success');
+            
+            // 延迟1秒后自动跳转到下一步
+            setTimeout(() => {
+                showTab('step5');
+            }, 1000);
+        } else {
+            showAlert(result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('网络错误: ' + error.message, 'danger');
+    }
+}
+</script>

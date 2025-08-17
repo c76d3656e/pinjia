@@ -110,8 +110,103 @@ def calculate_ahp_weights(matrix: List[List[float]]) -> Optional[List[float]]:
         print(f"AHP权重计算失败: {e}")
         return None
 
+def calculate_indicator_score_new(value: float, range_data: dict) -> tuple:
+    """根据新的五级评价标准计算指标得分和等级，支持插值计算"""
+    try:
+        # 定义等级分数
+        excellent_score = 100.0
+        good_score = 85.0
+        average_score = 70.0
+        poor_score = 50.0
+        verypoor_score = 20.0
+        
+        # 获取各等级范围
+        excellent = range_data.get('excellent', {})
+        good = range_data.get('good', {})
+        average = range_data.get('average', {})
+        poor = range_data.get('poor', {})
+        verypoor = range_data.get('verypoor', {})
+        
+        excellent_val = excellent.get('value', 0)
+        good_min = good.get('min', 0)
+        good_max = good.get('max', 0)
+        avg_min = average.get('min', 0)
+        avg_max = average.get('max', 0)
+        poor_min = poor.get('min', 0)
+        poor_max = poor.get('max', 0)
+        verypoor_val = verypoor.get('value', 0)
+        
+        # 检查优秀等级
+        if excellent.get('operator') == '≤' and value <= excellent_val:
+            return excellent_score, '优'
+        elif excellent.get('operator') == '≥' and value >= excellent_val:
+            return excellent_score, '优'
+        
+        # 检查很差等级
+        if verypoor.get('operator') == '≤' and value <= verypoor_val:
+            return verypoor_score, '很差'
+        elif verypoor.get('operator') == '≥' and value >= verypoor_val:
+            return verypoor_score, '很差'
+        
+        # 在范围内进行插值计算
+        # 检查良好等级范围
+        if good_min <= value <= good_max:
+            # 在良好范围内插值
+            if good_max > good_min:
+                ratio = (value - good_min) / (good_max - good_min)
+                score = good_score + ratio * (excellent_score - good_score)
+            else:
+                score = good_score
+            return min(excellent_score, max(good_score, score)), '良'
+        
+        # 检查一般等级范围
+        if avg_min <= value <= avg_max:
+            # 在一般范围内插值
+            if avg_max > avg_min:
+                ratio = (value - avg_min) / (avg_max - avg_min)
+                score = average_score + ratio * (good_score - average_score)
+            else:
+                score = average_score
+            return min(good_score, max(average_score, score)), '一般'
+        
+        # 检查较差等级范围
+        if poor_min <= value <= poor_max:
+            # 在较差范围内插值
+            if poor_max > poor_min:
+                ratio = (value - poor_min) / (poor_max - poor_min)
+                score = poor_score + ratio * (average_score - poor_score)
+            else:
+                score = poor_score
+            return min(average_score, max(poor_score, score)), '较差'
+        
+        # 检查是否在优秀和良好之间
+        if excellent.get('operator') == '≤' and good_max < value < excellent_val:
+            ratio = (value - good_max) / (excellent_val - good_max)
+            score = good_score + ratio * (excellent_score - good_score)
+            return min(excellent_score, max(good_score, score)), '良'
+        elif excellent.get('operator') == '≥' and excellent_val < value < good_min:
+            ratio = (good_min - value) / (good_min - excellent_val)
+            score = good_score + ratio * (excellent_score - good_score)
+            return min(excellent_score, max(good_score, score)), '良'
+        
+        # 检查是否在很差和较差之间
+        if verypoor.get('operator') == '≤' and verypoor_val < value < poor_min:
+            ratio = (value - verypoor_val) / (poor_min - verypoor_val)
+            score = verypoor_score + ratio * (poor_score - verypoor_score)
+            return min(poor_score, max(verypoor_score, score)), '较差'
+        elif verypoor.get('operator') == '≥' and poor_max < value < verypoor_val:
+            ratio = (verypoor_val - value) / (verypoor_val - poor_max)
+            score = verypoor_score + ratio * (poor_score - verypoor_score)
+            return min(poor_score, max(verypoor_score, score)), '较差'
+        
+        # 默认返回较差等级
+        return poor_score, '较差'
+    except Exception as e:
+        print(f"[ERROR] 计算指标得分时出错: {e}")
+        return 50.0, '较差'
+
 def calculate_indicator_score(value: float, optimal: float, worst: float, is_positive: bool = True) -> float:
-    """计算单个指标得分"""
+    """计算单个指标得分（兼容旧版本）"""
     try:
         if is_positive:
             # 正向指标：值越大越好
@@ -131,15 +226,15 @@ def calculate_indicator_score(value: float, optimal: float, worst: float, is_pos
 def get_grade_from_score(score: float) -> str:
     """根据得分获取等级"""
     if score >= 90:
-        return "优秀"
+        return "优"
     elif score >= 80:
-        return "良好"
+        return "良"
     elif score >= 70:
-        return "中等"
-    elif score >= 60:
-        return "及格"
+        return "一般"
+    elif score >= 50:
+        return "较差"
     else:
-        return "不及格"
+        return "很差"
 
 @app.route('/')
 def index():
@@ -159,9 +254,21 @@ def get_indicators():
     else:
         print(f"[DEBUG] 指标列表为空!")
     
+    # 重新读取原始分类数据
+    try:
+        import json
+        indicators_file = os.path.join('config', 'indicators.json')
+        with open(indicators_file, 'r', encoding='utf-8') as f:
+            original_data = json.load(f)
+            categories = original_data.get('categories', [])
+    except Exception as e:
+        print(f"[ERROR] 读取分类数据失败: {e}")
+        categories = []
+    
     return jsonify({
         'success': True,
-        'data': app_state['indicators']
+        'data': app_state['indicators'],
+        'categories': categories
     })
 
 @app.route('/api/indicators/select', methods=['POST'])
@@ -263,15 +370,22 @@ def set_ranges():
     """设置指标范围"""
     try:
         data = request.get_json()
+        print(f"[DEBUG] 接收到范围设置请求: {data}")
+        
         ranges = data.get('ranges', {})
+        print(f"[DEBUG] 解析的范围数据: {ranges}")
+        print(f"[DEBUG] 范围数据类型: {type(ranges)}")
+        print(f"[DEBUG] 范围数据键数量: {len(ranges)}")
         
         app_state['ranges'] = ranges
+        print(f"[DEBUG] 已保存到app_state['ranges']: {app_state['ranges']}")
         
         return jsonify({
             'success': True,
             'message': '指标范围设置完成'
         })
     except Exception as e:
+        print(f"[ERROR] 设置范围失败: {str(e)}")
         return jsonify({
             'success': False,
             'message': f'设置范围失败: {str(e)}'
@@ -296,30 +410,79 @@ def set_measured_values():
             'message': f'设置实测值失败: {str(e)}'
         })
 
+@app.route('/api/data/submit', methods=['POST'])
+def submit_data():
+    """提交实测数据"""
+    try:
+        data = request.get_json()
+        measured_values = data.get('measured_values', {})
+        
+        # 验证数据
+        if not measured_values:
+            return jsonify({
+                'success': False,
+                'message': '请输入实测数据'
+            })
+        
+        # 检查是否所有选中的指标都有数据
+        missing_indicators = []
+        for indicator in app_state['selected_indicators']:
+            if indicator['id'] not in measured_values:
+                missing_indicators.append(indicator['name'])
+        
+        if missing_indicators:
+            return jsonify({
+                'success': False,
+                'message': f'缺少以下指标的实测数据: {", ".join(missing_indicators)}'
+            })
+        
+        # 保存实测数据
+        app_state['measured_values'] = measured_values
+        
+        return jsonify({
+            'success': True,
+            'message': '实测数据提交成功'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'提交实测数据失败: {str(e)}'
+        })
+
 @app.route('/api/evaluation/calculate', methods=['POST'])
 def calculate_evaluation():
     """执行综合评价"""
     try:
+        print(f"[DEBUG] 开始综合评价计算")
+        print(f"[DEBUG] app_state['selected_indicators']: {app_state['selected_indicators']}")
+        print(f"[DEBUG] app_state['weights']: {app_state['weights']}")
+        print(f"[DEBUG] app_state['ranges']: {app_state['ranges']}")
+        print(f"[DEBUG] app_state['measured_values']: {app_state['measured_values']}")
+        
         # 检查数据完整性
         if not app_state['selected_indicators']:
+            print(f"[DEBUG] 检查失败: 未选择指标")
             return jsonify({
                 'success': False,
                 'message': '请先选择指标'
             })
         
         if not app_state['weights']:
+            print(f"[DEBUG] 检查失败: 未设置权重")
             return jsonify({
                 'success': False,
                 'message': '请先设置权重'
             })
         
         if not app_state['ranges']:
+            print(f"[DEBUG] 检查失败: 未设置范围，当前ranges: {app_state['ranges']}")
             return jsonify({
                 'success': False,
                 'message': '请先设置指标范围'
             })
         
         if not app_state['measured_values']:
+            print(f"[DEBUG] 检查失败: 未输入实测值")
             return jsonify({
                 'success': False,
                 'message': '请先输入实测值'
@@ -339,12 +502,8 @@ def calculate_evaluation():
             range_data = app_state['ranges'].get(indicator_id, {})
             weight = app_state['weights'].get(indicator_id, 0)
             
-            optimal = range_data.get('optimal', 100)
-            worst = range_data.get('worst', 0)
-            is_positive = indicator.get('is_positive', True)
-            
-            score = calculate_indicator_score(measured_value, optimal, worst, is_positive)
-            grade = get_grade_from_score(score)
+            # 使用新的五级评价标准计算得分和等级
+            score, grade = calculate_indicator_score_new(measured_value, range_data)
             
             indicator_results.append({
                 'indicator_id': indicator_id,
@@ -359,12 +518,18 @@ def calculate_evaluation():
         
         overall_grade = get_grade_from_score(total_weighted_score)
         
+        from datetime import datetime
+        
         result = {
             'overall_score': total_weighted_score,
             'overall_grade': overall_grade,
             'indicator_results': indicator_results,
-            'calculation_time': '2024-01-XX 12:00:00'
+            'calculation_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
+        
+        print(f"[DEBUG] 计算结果: {result}")
+        print(f"[DEBUG] 总加权得分: {total_weighted_score}")
+        print(f"[DEBUG] 指标结果数量: {len(indicator_results)}")
         
         app_state['evaluation_result'] = result
         
@@ -411,6 +576,16 @@ def reset_state():
         'success': True,
         'message': '应用状态已重置'
     })
+
+@app.route('/static/components/<path:filename>')
+def serve_components(filename):
+    """提供组件文件访问"""
+    return send_from_directory('templates/components', filename)
+
+@app.route('/test')
+def test_page():
+    """测试页面"""
+    return render_template('test.html')
 
 if __name__ == '__main__':
     # 创建必要的目录

@@ -1,0 +1,414 @@
+<!-- 步骤2: 权重设置组件 -->
+<style>
+.ahp-matrix-table {
+    font-size: 14px;
+}
+.ahp-matrix-table th {
+    background-color: #f8f9fa;
+    text-align: center;
+    vertical-align: middle;
+}
+.ahp-matrix-table td {
+    text-align: center;
+    vertical-align: middle;
+}
+.ahp-matrix-table input {
+    text-align: center;
+}
+.weight-results {
+    max-height: 500px;
+    overflow-y: auto;
+}
+.weight-item {
+    margin-bottom: 15px;
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+.weight-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+.weight-name {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #495057;
+    font-size: 16px;
+}
+.weight-value {
+    font-size: 20px;
+    color: #28a745;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+.matrix-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #dee2e6;
+}
+.bg-gradient-success {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+}
+.progress {
+    border-radius: 10px;
+    overflow: hidden;
+}
+.progress-bar {
+    transition: width 0.6s ease;
+}
+</style>
+<div id="step2" class="tab-pane">
+    <div class="card">
+        <div class="card-header">
+            <h3>设置指标权重</h3>
+        </div>
+        <div class="card-body">
+            <!-- 权重计算方法选择区域 -->
+            <div class="form-group">
+                <label class="form-label">权重计算方法：</label>
+                <select id="weight-method" class="form-control" onchange="showWeightMethod()">
+                    <option value="equal">等权重法</option>
+                    <option value="expert">专家打分法</option>
+                    <option value="ahp" selected>AHP层次分析法</option>
+                </select>
+            </div>
+            
+            <!-- 权重计算方法内容区域 -->
+            <div id="weight-equal" class="weight-method">
+                <div class="alert alert-info">
+                    等权重法将为所有选中的指标分配相等的权重。
+                </div>
+            </div>
+            
+            <div id="weight-expert" class="weight-method" style="display: none;">
+                <p>请为每个指标打分（1-10分）：</p>
+                <div id="expert-scores"></div>
+            </div>
+            
+            <div id="weight-ahp" class="weight-method">
+                <p>请填写判断矩阵（两两比较的重要性）：</p>
+                <div class="alert alert-info">
+                    <strong>AHP判断矩阵说明：</strong><br>
+                    • <strong>比较规则：</strong>矩阵中的值表示"行指标"相对于"列指标"的重要程度<br>
+                    • <strong>重要性标度：</strong>1=同等重要，3=稍微重要，5=明显重要，7=强烈重要，9=极端重要<br>
+                    • <strong>倒数关系：</strong>如果A比B重要程度为3，则B比A重要程度为1/3<br>
+                    • <strong>对角线：</strong>自己与自己比较永远为1
+                </div>
+                <div class="alert alert-success">
+                    <strong>示例：</strong>假设有3个指标：大块率(A)、根底率(B)、后冲距离(C)<br>
+                    <table class="table table-sm table-bordered mt-2" style="font-size: 12px;">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>大块率(A)</th>
+                                <th>根底率(B)</th>
+                                <th>后冲距离(C)</th>
+                                <th>含义</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>大块率(A)</strong></td>
+                                <td>1</td>
+                                <td>3</td>
+                                <td>5</td>
+                                <td>A比B稍微重要，比C明显重要</td>
+                            </tr>
+                            <tr>
+                                <td><strong>根底率(B)</strong></td>
+                                <td>1/3</td>
+                                <td>1</td>
+                                <td>2</td>
+                                <td>B比A稍微不重要，比C稍微重要</td>
+                            </tr>
+                            <tr>
+                                <td><strong>后冲距离(C)</strong></td>
+                                <td>1/5</td>
+                                <td>1/2</td>
+                                <td>1</td>
+                                <td>C比A明显不重要，比B稍微不重要</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- 判断矩阵容器，给予充足空间 -->
+                <div class="matrix-container" style="overflow-x: auto; margin: 20px 0;">
+                    <div id="ahp-matrix"></div>
+                </div>
+            </div>
+            
+            <!-- 计算按钮 -->
+            <div class="mt-3 text-center">
+                <button class="btn btn-primary btn-lg" onclick="calculateWeights()">
+                    <i class="fas fa-calculator"></i> 计算权重
+                </button>
+            </div>
+            
+            <!-- 权重结果展示区域（动态容器） -->
+            <div id="weight-results-panel" class="mt-4" style="display: none;">
+                <div class="card border-success shadow-sm">
+                    <div class="card-header bg-gradient-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-pie"></i> 权重计算结果
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="weight-results-content"></div>
+                        <div class="mt-4 text-center">
+                            <button class="btn btn-success btn-lg" onclick="proceedToNextStep()" id="next-step-btn">
+                                <i class="fas fa-arrow-right"></i> 下一步：设置指标范围
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="step2-result"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 权重设置相关的JavaScript函数
+
+// 显示权重计算方法
+function showWeightMethod() {
+    const method = document.getElementById('weight-method').value;
+    
+    // 隐藏所有方法
+    document.querySelectorAll('.weight-method').forEach(div => {
+        div.style.display = 'none';
+    });
+    
+    // 显示选中的方法
+    document.getElementById('weight-' + method).style.display = 'block';
+    
+    // 根据方法更新内容
+    if (method === 'expert') {
+        generateExpertScoreInputs();
+    } else if (method === 'ahp') {
+        generateAHPMatrix();
+    }
+}
+
+// 生成专家打分输入框
+function generateExpertScoreInputs() {
+    if (!selectedIndicators || selectedIndicators.length === 0) {
+        document.getElementById('expert-scores').innerHTML = '<div class="alert alert-warning">请先选择指标</div>';
+        return;
+    }
+    
+    let html = '';
+    selectedIndicators.forEach(indicator => {
+        html += `
+            <div class="form-group row">
+                <label class="col-sm-6 col-form-label">${indicator.name}：</label>
+                <div class="col-sm-6">
+                    <input type="number" class="form-control" id="expert-score-${indicator.id}" 
+                           min="1" max="10" step="0.1" value="1" placeholder="1-10分">
+                </div>
+            </div>
+        `;
+    });
+    document.getElementById('expert-scores').innerHTML = html;
+}
+
+// 生成AHP判断矩阵
+function generateAHPMatrix() {
+    if (!selectedIndicators || selectedIndicators.length === 0) {
+        document.getElementById('ahp-matrix').innerHTML = '<div class="alert alert-warning">请先选择指标</div>';
+        return;
+    }
+    
+    const n = selectedIndicators.length;
+    let html = '<table class="table table-bordered ahp-matrix-table">';
+    
+    // 表头
+    html += '<thead><tr><th></th>';
+    selectedIndicators.forEach(indicator => {
+        html += `<th class="text-center">${indicator.name}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    // 矩阵内容
+    selectedIndicators.forEach((indicator1, i) => {
+        html += `<tr><th>${indicator1.name}</th>`;
+        selectedIndicators.forEach((indicator2, j) => {
+            if (i === j) {
+                html += '<td class="text-center">1</td>';
+            } else if (i < j) {
+                html += `<td><input type="number" class="form-control form-control-sm" 
+                         id="ahp-${indicator1.id}-${indicator2.id}" 
+                         value="1" step="0.1" min="0.1" max="9" 
+                         onchange="updateAHPMatrix(${i}, ${j})"></td>`;
+            } else {
+                html += `<td class="text-center" id="ahp-display-${indicator1.id}-${indicator2.id}">1</td>`;
+            }
+        });
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    document.getElementById('ahp-matrix').innerHTML = html;
+}
+
+// 更新AHP矩阵（保持一致性）
+function updateAHPMatrix(i, j) {
+    const indicator1 = selectedIndicators[i];
+    const indicator2 = selectedIndicators[j];
+    const value = parseFloat(document.getElementById(`ahp-${indicator1.id}-${indicator2.id}`).value) || 1;
+    const reciprocal = (1 / value).toFixed(2);
+    
+    // 更新对称位置
+    const displayElement = document.getElementById(`ahp-display-${indicator2.id}-${indicator1.id}`);
+    if (displayElement) {
+        displayElement.textContent = reciprocal;
+    }
+}
+
+// 计算权重
+async function calculateWeights() {
+    const method = document.getElementById('weight-method').value;
+    let data = {
+        method: method,
+        indicators: selectedIndicators.map(ind => ind.id)
+    };
+    
+    if (method === 'expert') {
+        // 收集专家打分数据
+        const scores = {};
+        selectedIndicators.forEach(ind => {
+            const input = document.getElementById(`expert-score-${ind.id}`);
+            if (input) {
+                scores[ind.id] = parseFloat(input.value) || 0;
+            }
+        });
+        data.scores = scores;
+    } else if (method === 'ahp') {
+        // 收集AHP判断矩阵数据
+        const n = selectedIndicators.length;
+        const matrix = [];
+        
+        for (let i = 0; i < n; i++) {
+            matrix[i] = [];
+            for (let j = 0; j < n; j++) {
+                if (i === j) {
+                    matrix[i][j] = 1;
+                } else {
+                    const input = document.getElementById(`ahp-${selectedIndicators[i].id}-${selectedIndicators[j].id}`);
+                    if (input && input.value) {
+                        matrix[i][j] = parseFloat(input.value);
+                    } else {
+                        matrix[i][j] = 1;
+                    }
+                }
+            }
+        }
+        data.matrix = matrix;
+    }
+    
+    try {
+        const response = await fetch('/api/weights/calculate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentWeights = result.data;
+            displayWeights(result.data);
+            showAlert(result.message, 'success');
+        } else {
+            showAlert(result.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('网络错误: ' + error.message, 'danger');
+    }
+}
+
+// 显示权重结果
+function displayWeights(weights) {
+    const panel = document.getElementById('weight-results-panel');
+    const content = document.getElementById('weight-results-content');
+    
+    // 计算总权重用于验证
+    const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+    
+    let html = '<div class="weight-results">';
+    
+    // 添加总权重验证信息
+    html += `
+        <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle"></i> 
+            <strong>权重验证：</strong>总权重 = ${(totalWeight * 100).toFixed(2)}% 
+            ${Math.abs(totalWeight - 1) < 0.001 ? '<span class="text-success">✓ 权重分配正确</span>' : '<span class="text-warning">⚠ 权重分配异常</span>'}
+        </div>
+    `;
+    
+    // 按权重大小排序显示
+    const sortedWeights = Object.entries(weights).sort((a, b) => b[1] - a[1]);
+    
+    sortedWeights.forEach(([indicatorId, weight], index) => {
+        const indicator = selectedIndicators.find(ind => ind.id === indicatorId);
+        const percentage = (weight * 100).toFixed(2);
+        
+        // 根据权重大小设置不同的进度条颜色
+        let progressColor = 'bg-success';
+        if (weight > 0.4) progressColor = 'bg-danger';
+        else if (weight > 0.25) progressColor = 'bg-warning';
+        else if (weight > 0.15) progressColor = 'bg-info';
+        
+        html += `
+            <div class="weight-item">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="weight-name">
+                        <span class="badge badge-secondary mr-2">${index + 1}</span>
+                        ${indicator ? indicator.name : indicatorId}
+                    </div>
+                    <div class="weight-value">${percentage}%</div>
+                </div>
+                <div class="progress" style="height: 12px;">
+                    <div class="progress-bar ${progressColor}" 
+                         style="width: ${percentage}%" 
+                         data-toggle="tooltip" 
+                         title="权重: ${percentage}%">
+                    </div>
+                </div>
+                <small class="text-muted mt-1 d-block">
+                    权重系数: ${weight.toFixed(4)}
+                </small>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    content.innerHTML = html;
+    
+    // 启用工具提示
+    $('[data-toggle="tooltip"]').tooltip();
+    
+    // 显示面板并添加动画效果
+    panel.style.display = 'block';
+    panel.style.opacity = '0';
+    panel.style.transform = 'translateY(20px)';
+    
+    setTimeout(() => {
+        panel.style.transition = 'all 0.5s ease';
+        panel.style.opacity = '1';
+        panel.style.transform = 'translateY(0)';
+    }, 100);
+}
+
+// 进入下一步
+function proceedToNextStep() {
+    showTab('step3');
+}
+</script>

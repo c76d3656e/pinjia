@@ -1,0 +1,299 @@
+<!-- 步骤3: 范围设置组件 -->
+<div id="step3" class="tab-pane">
+    <div class="card">
+        <div class="card-header">
+            <h3>设置指标评价范围</h3>
+        </div>
+        <div class="card-body">
+            <p class="mb-3">请为每个指标设置评价等级范围（优、良、一般、较差、很差）：</p>
+            <div id="ranges-form"></div>
+            <div class="mt-3">
+                <button class="btn btn-primary" onclick="setRanges()">保存范围</button>
+            </div>
+            <div id="step3-result"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 范围设置相关的JavaScript函数
+
+// 默认评价标准数据
+const defaultRanges = {
+    '大块率': {
+        excellent: { operator: '≤', value: '5' },
+        good: { min: '5', max: '7.5' },
+        average: { min: '7.5', max: '12.5' },
+        poor: { min: '12.5', max: '15' },
+        verypoor: { operator: '≥', value: '15' }
+    },
+    '根底率': {
+        excellent: { operator: '≤', value: '0.1' },
+        good: { min: '0.1', max: '0.3' },
+        average: { min: '0.3', max: '0.5' },
+        poor: { min: '0.5', max: '0.7' },
+        verypoor: { operator: '≥', value: '0.7' }
+    },
+    '后冲距离': {
+        excellent: { operator: '≤', value: '0.2' },
+        good: { min: '0.2', max: '0.5' },
+        average: { min: '0.5', max: '0.8' },
+        poor: { min: '0.8', max: '1' },
+        verypoor: { operator: '≥', value: '1' }
+    },
+    '前冲距离': {
+        excellent: { operator: '≤', value: '20' },
+        good: { min: '20', max: '22' },
+        average: { min: '22', max: '24' },
+        poor: { min: '24', max: '26' },
+        verypoor: { operator: '≥', value: '26' }
+    },
+    '抛掷率': {
+        excellent: { operator: '≤', value: '3' },
+        good: { min: '3', max: '3.5' },
+        average: { min: '3.5', max: '4' },
+        poor: { min: '4', max: '4.5' },
+        verypoor: { operator: '≥', value: '4.5' }
+    },
+    '松散系数': {
+        excellent: { operator: '≥', value: '1.5' },
+        good: { min: '1.3', max: '1.5' },
+        average: { min: '1.2', max: '1.3' },
+        poor: { min: '1.1', max: '1.2' },
+        verypoor: { operator: '≤', value: '1.1' }
+    },
+    '爆堆高度': {
+        excellent: { operator: '≥', value: '2.0' },
+        good: { min: '1.5', max: '2.0' },
+        average: { min: '1.0', max: '1.5' },
+        poor: { min: '0.5', max: '1.0' },
+        verypoor: { operator: '≤', value: '0.5' }
+    },
+    '飞石最远距离': {
+        excellent: { operator: '≤', value: '70' },
+        good: { min: '70', max: '120' },
+        average: { min: '120', max: '170' },
+        poor: { min: '170', max: '220' },
+        verypoor: { operator: '≥', value: '220' }
+    },
+    '爆破振动速度': {
+        excellent: { operator: '≤', value: '1.5' },
+        good: { min: '1.5', max: '2.0' },
+        average: { min: '2.0', max: '2.5' },
+        poor: { min: '2.5', max: '3.5' },
+        verypoor: { operator: '≥', value: '3.5' }
+    },
+    '延米爆破量': {
+        excellent: { operator: '≥', value: '0' },
+        good: { min: '-1.5', max: '0' },
+        average: { min: '-2.5', max: '-1.5' },
+        poor: { min: '-2.5', max: '-3.5' },
+        verypoor: { operator: '≤', value: '-3.5' }
+    },
+    '炸药单耗': {
+        excellent: { operator: '≤', value: '0.45' },
+        good: { min: '0.45', max: '0.47' },
+        average: { min: '0.47', max: '0.49' },
+        poor: { min: '0.49', max: '0.51' },
+        verypoor: { operator: '≥', value: '0.51' }
+    }
+};
+
+// 生成范围设置表单
+function generateRangesForm() {
+    const formDiv = document.getElementById('ranges-form');
+    let html = '';
+    
+    if (selectedIndicators.length === 0) {
+        html = '<div class="alert alert-warning">请先选择指标</div>';
+    } else {
+        html = '<div class="table-responsive">';
+        html += '<table class="table table-bordered">';
+        html += '<thead class="table-light">';
+        html += '<tr>';
+        html += '<th>评价指标</th>';
+        html += '<th>优</th>';
+        html += '<th>良</th>';
+        html += '<th>一般</th>';
+        html += '<th>较差</th>';
+        html += '<th>很差</th>';
+        html += '</tr>';
+        html += '</thead>';
+        html += '<tbody>';
+        
+        selectedIndicators.forEach(indicator => {
+            const defaultRange = defaultRanges[indicator.name] || {
+                excellent: { operator: '≤', value: '' },
+                good: { min: '', max: '' },
+                average: { min: '', max: '' },
+                poor: { min: '', max: '' },
+                verypoor: { operator: '≥', value: '' }
+            };
+            
+            html += '<tr>';
+            // 指标名称包含单位
+            const indicatorNameWithUnit = indicator.unit ? `${indicator.name}(${indicator.unit})` : indicator.name;
+            html += `<td><strong>${indicatorNameWithUnit}</strong></td>`;
+            
+            // 优
+            html += '<td style="text-align: center;">';
+            html += `<span class="me-1">${defaultRange.excellent.operator}</span>`;
+            html += `<input type="number" class="form-control d-inline-block" style="width: 80px;" `;
+            html += `id="range-excellent-${indicator.id}" value="${defaultRange.excellent.value}" step="0.01">`;
+            html += '</td>';
+            
+            // 良
+            html += '<td style="text-align: center;">';
+            html += `<input type="number" class="form-control d-inline-block" style="width: 75px; font-size: 12px;" `;
+            html += `id="range-good-min-${indicator.id}" value="${defaultRange.good.min}" step="0.01">`;
+            html += '<span class="mx-1">~</span>';
+            html += `<input type="number" class="form-control d-inline-block" style="width: 75px; font-size: 12px;" `;
+            html += `id="range-good-max-${indicator.id}" value="${defaultRange.good.max}" step="0.01">`;
+            html += '</td>';
+            
+            // 一般
+            html += '<td style="text-align: center;">';
+            html += `<input type="number" class="form-control d-inline-block" style="width: 75px; font-size: 12px;" `;
+            html += `id="range-average-min-${indicator.id}" value="${defaultRange.average.min}" step="0.01">`;
+            html += '<span class="mx-1">~</span>';
+            html += `<input type="number" class="form-control d-inline-block" style="width: 75px; font-size: 12px;" `;
+            html += `id="range-average-max-${indicator.id}" value="${defaultRange.average.max}" step="0.01">`;
+            html += '</td>';
+            
+            // 较差
+            html += '<td style="text-align: center;">';
+            html += `<input type="number" class="form-control d-inline-block" style="width: 75px; font-size: 12px;" `;
+            html += `id="range-poor-min-${indicator.id}" value="${defaultRange.poor.min}" step="0.01">`;
+            html += '<span class="mx-1">~</span>';
+            html += `<input type="number" class="form-control d-inline-block" style="width: 75px; font-size: 12px;" `;
+            html += `id="range-poor-max-${indicator.id}" value="${defaultRange.poor.max}" step="0.01">`;
+            html += '</td>';
+            
+            // 很差
+            html += '<td style="text-align: center;">';
+            html += `<span class="me-1">${defaultRange.verypoor.operator}</span>`;
+            html += `<input type="number" class="form-control d-inline-block" style="width: 80px;" `;
+            html += `id="range-verypoor-${indicator.id}" value="${defaultRange.verypoor.value}" step="0.01">`;
+            html += '</td>';
+            
+            html += '</tr>';
+        });
+        
+        html += '</tbody>';
+        html += '</table>';
+        html += '</div>';
+    }
+    
+    formDiv.innerHTML = html;
+}
+
+// 设置范围
+function setRanges() {
+    if (selectedIndicators.length === 0) {
+        showAlert('请先选择指标', 'warning');
+        return;
+    }
+    
+    const ranges = {};
+    let hasError = false;
+    
+    selectedIndicators.forEach(indicator => {
+        const excellentValue = document.getElementById(`range-excellent-${indicator.id}`).value;
+        const goodMin = document.getElementById(`range-good-min-${indicator.id}`).value;
+        const goodMax = document.getElementById(`range-good-max-${indicator.id}`).value;
+        const averageMin = document.getElementById(`range-average-min-${indicator.id}`).value;
+        const averageMax = document.getElementById(`range-average-max-${indicator.id}`).value;
+        const poorMin = document.getElementById(`range-poor-min-${indicator.id}`).value;
+        const poorMax = document.getElementById(`range-poor-max-${indicator.id}`).value;
+        const verypoorValue = document.getElementById(`range-verypoor-${indicator.id}`).value;
+        
+        if (!excellentValue || !goodMin || !goodMax || !averageMin || !averageMax || 
+            !poorMin || !poorMax || !verypoorValue) {
+            showAlert(`请完整填写 ${indicator.name} 的所有范围值`, 'warning');
+            hasError = true;
+            return;
+        }
+        
+        const defaultRange = defaultRanges[indicator.name];
+        ranges[indicator.id] = {
+            excellent: {
+                operator: defaultRange ? defaultRange.excellent.operator : '≤',
+                value: parseFloat(excellentValue)
+            },
+            good: {
+                min: parseFloat(goodMin),
+                max: parseFloat(goodMax)
+            },
+            average: {
+                min: parseFloat(averageMin),
+                max: parseFloat(averageMax)
+            },
+            poor: {
+                min: parseFloat(poorMin),
+                max: parseFloat(poorMax)
+            },
+            verypoor: {
+                operator: defaultRange ? defaultRange.verypoor.operator : '≥',
+                value: parseFloat(verypoorValue)
+            }
+        };
+    });
+    
+    if (hasError) {
+        return;
+    }
+    
+    currentRanges = ranges;
+    
+    // 提交范围数据到后端
+    submitRangesToServer(ranges);
+}
+
+// 提交范围数据到服务器
+async function submitRangesToServer(ranges) {
+    try {
+        console.log('提交范围数据到服务器:', ranges);
+        
+        const response = await fetch('/api/ranges/set', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ranges: ranges
+            })
+        });
+        
+        const result = await response.json();
+        console.log('服务器响应:', result);
+        
+        if (result.success) {
+            // 显示成功信息
+            const resultDiv = document.getElementById('step3-result');
+            resultDiv.innerHTML = `
+                <div class="alert alert-success mt-3">
+                    <h5 class="alert-heading">范围设置成功！</h5>
+                    <p class="mb-0">已为 ${selectedIndicators.length} 个指标设置了评价范围。</p>
+                </div>
+            `;
+            
+            showAlert('范围设置成功！', 'success');
+            
+            // 自动跳转到下一步
+            setTimeout(() => {
+                showTab('step4');
+            }, 1500);
+        } else {
+            showAlert('范围设置失败: ' + result.message, 'danger');
+        }
+    } catch (error) {
+        console.error('提交范围数据失败:', error);
+        showAlert('提交范围数据失败: ' + error.message, 'danger');
+    }
+}
+
+// 当步骤3被激活时，生成表单
+function onStep3Activated() {
+    generateRangesForm();
+}
+</script>
