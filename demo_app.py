@@ -17,6 +17,12 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 from typing import Dict, List, Any, Optional
+try:
+    from pyngrok import ngrok
+    NGROK_AVAILABLE = True
+except ImportError:
+    NGROK_AVAILABLE = False
+    print("警告: pyngrok未安装，无法使用ngrok功能")
 
 # 添加src目录到Python路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -81,39 +87,48 @@ def load_indicators():
     return False
 
 def calculate_fahp_weights(matrix: List[List[float]]) -> Optional[List[float]]:
-    """计算FAHP模糊层次分析法权重"""
+    """计算FAHP模糊层次分析法权重（模糊互补判断矩阵）"""
     try:
         matrix = np.array(matrix, dtype=float)
         n = matrix.shape[0]
         
         print(f"输入矩阵: {matrix}")
+
+        if matrix.shape != (n, n) or n == 0:
+            raise ValueError("判断矩阵必须为非空方阵")
+
+        if n == 1:
+            if abs(matrix[0][0] - 0.5) > 1e-6:
+                print(f"警告: 单指标矩阵对角线元素应为0.5，但matrix[0][0] = {matrix[0][0]}")
+            return [1.0], 0.0
         
         # 验证矩阵是否为模糊互补判断矩阵
         for i in range(n):
             for j in range(n):
+                if matrix[i][j] < 0 or matrix[i][j] > 1:
+                    raise ValueError(f"FAHP判断矩阵元素必须在0-1之间: matrix[{i}][{j}] = {matrix[i][j]}")
                 if i == j and abs(matrix[i][j] - 0.5) > 1e-6:
                     print(f"警告: 对角线元素应为0.5，但matrix[{i}][{j}] = {matrix[i][j]}")
                     matrix[i][j] = 0.5
                 elif i != j and abs(matrix[i][j] + matrix[j][i] - 1.0) > 1e-6:
-                    print(f"警告: 互补性不满足，matrix[{i}][{j}] + matrix[{j}][{i}] = {matrix[i][j] + matrix[j][i]}")
+                    raise ValueError(
+                        f"FAHP判断矩阵不满足互补性: "
+                        f"matrix[{i}][{j}] + matrix[{j}][{i}] = {matrix[i][j] + matrix[j][i]}"
+                    )
         
         # 步骤1：计算行和
         row_sums = np.sum(matrix, axis=1)
         print(f"行和: {row_sums}")
         
         # 步骤2：计算权重向量
-        # wi = (1/n) * (Σrij - (n-1)/2)
-        weights = (row_sums - (n - 1) / 2) / n
-        print(f"原始权重: {weights}")
-        
-        # 步骤3：归一化权重（确保权重和为1且权重为正）
-        # 如果存在负权重，进行调整
-        min_weight = np.min(weights)
-        if min_weight < 0:
-            weights = weights - min_weight + 1e-6
-        
+        # wi = (Σrij + n / 2 - 1) / (n * (n - 1))
+        weights = (row_sums + n / 2 - 1) / (n * (n - 1))
+        total_weight = np.sum(weights)
+        if np.any(weights < -1e-10) or abs(total_weight - 1.0) > 1e-6:
+            raise ValueError(f"FAHP权重计算异常: weights={weights}, sum={total_weight}")
+        weights = np.clip(weights, 0, None)
         weights = weights / np.sum(weights)
-        print(f"归一化权重: {weights}")
+        print(f"权重: {weights}")
         
         # 步骤4：一致性检验
         ci = calculate_fahp_consistency(matrix, weights)
@@ -131,28 +146,23 @@ def calculate_fahp_consistency(matrix: np.ndarray, weights: np.ndarray) -> float
     """计算FAHP一致性指标 - 基于相容性指标I(A,W*)"""
     try:
         n = matrix.shape[0]
+        if n <= 1:
+            return 0.0
         
         # 计算特征矩阵W*
-        # W*ij = 0.5 + (wi - wj)
+        # W*ij = wi / (wi + wj)
         W_star = np.zeros((n, n))
         for i in range(n):
             for j in range(n):
-                W_star[i][j] = 0.5 + (weights[i] - weights[j])
+                denominator = weights[i] + weights[j]
+                W_star[i][j] = weights[i] / denominator if denominator > 0 else 0.5
         
         print(f"特征矩阵W*: {W_star}")
         
         # 计算相容性指标I(A,W*)
-        # I(A,W*) = (1/(n*(n-1))) * Σ|aij - w*ij|
-        diff_matrix = np.abs(matrix - W_star)
-        
-        # 排除对角线元素（i=j时）
-        total_diff = 0
-        for i in range(n):
-            for j in range(n):
-                if i != j:
-                    total_diff += diff_matrix[i][j]
-        
-        consistency_index = total_diff / (n * (n - 1))
+        # I(A,W*) = (1/n^2) * Σ|aij + w*ji - 1|，等价于Σ|aij - w*ij|。
+        diff_matrix = np.abs(matrix + W_star.T - 1)
+        consistency_index = np.sum(diff_matrix) / (n * n)
         
         print(f"差异矩阵: {diff_matrix}")
         print(f"相容性指标I(A,W*): {consistency_index}")
@@ -167,17 +177,36 @@ def calculate_fahp_consistency(matrix: np.ndarray, weights: np.ndarray) -> float
 def calculate_ahp_weights(matrix: List[List[float]]) -> Optional[List[float]]:
     """计算AHP权重"""
     try:
-        matrix = np.array(matrix)
+        matrix = np.array(matrix, dtype=float)
         n = matrix.shape[0]
+
+        if matrix.shape != (n, n) or n == 0:
+            raise ValueError("AHP判断矩阵必须为非空方阵")
+
+        if np.any(matrix <= 0):
+            raise ValueError("AHP判断矩阵元素必须为正数")
+
+        if not np.allclose(np.diag(matrix), 1.0, atol=1e-6):
+            raise ValueError("AHP判断矩阵对角线元素必须为1")
+
+        if not np.allclose(matrix * matrix.T, np.ones((n, n)), atol=1e-3):
+            raise ValueError("AHP判断矩阵必须满足互反性 aij * aji = 1")
+
+        if n == 1:
+            return [1.0]
         
         # 计算特征向量
         eigenvalues, eigenvectors = np.linalg.eig(matrix)
         max_eigenvalue_index = np.argmax(eigenvalues.real)
         principal_eigenvector = eigenvectors[:, max_eigenvalue_index].real
+
+        if np.sum(principal_eigenvector) < 0:
+            principal_eigenvector = -principal_eigenvector
+        if np.any(principal_eigenvector <= 0):
+            principal_eigenvector = np.abs(principal_eigenvector)
         
         # 归一化权重
         weights = principal_eigenvector / np.sum(principal_eigenvector)
-        weights = np.abs(weights)  # 确保权重为正
         
         # 一致性检查
         max_eigenvalue = eigenvalues[max_eigenvalue_index].real
@@ -187,11 +216,68 @@ def calculate_ahp_weights(matrix: List[List[float]]) -> Optional[List[float]]:
         cr = ci / ri if ri > 0 else 0
         
         if cr > 0.1:
-            print(f"警告: 一致性比率 {cr:.3f} > 0.1，判断矩阵一致性较差")
+            raise ValueError(f"AHP判断矩阵一致性不满足要求，CR = {cr:.3f} > 0.1")
         
         return weights.tolist()
     except Exception as e:
         print(f"AHP权重计算失败: {e}")
+        return None
+
+def calculate_entropy_weights(
+    data_matrix: List[List[float]],
+    indicator_ids: List[str],
+    benefit_flags: List[bool]
+) -> Optional[Dict[str, float]]:
+    """使用熵权法计算权重"""
+    try:
+        matrix = np.array(data_matrix, dtype=float)
+        if matrix.ndim != 2:
+            raise ValueError("熵权法数据矩阵必须为二维数组")
+        if matrix.shape[1] != len(indicator_ids):
+            raise ValueError("数据矩阵列数必须与指标数量一致")
+        if matrix.shape[0] < 2:
+            raise ValueError("熵权法至少需要2个样本")
+        if len(benefit_flags) != len(indicator_ids):
+            raise ValueError("指标方向数量必须与指标数量一致")
+        if not np.all(np.isfinite(matrix)):
+            raise ValueError("数据矩阵包含无效数值")
+
+        normalized = np.zeros_like(matrix, dtype=float)
+        for j in range(matrix.shape[1]):
+            column = matrix[:, j]
+            col_min = np.min(column)
+            col_max = np.max(column)
+            if abs(col_max - col_min) < 1e-12:
+                normalized[:, j] = 1.0
+            elif benefit_flags[j]:
+                normalized[:, j] = (column - col_min) / (col_max - col_min)
+            else:
+                normalized[:, j] = (col_max - column) / (col_max - col_min)
+
+        column_sums = np.sum(normalized, axis=0)
+        p_matrix = np.zeros_like(normalized, dtype=float)
+        for j, column_sum in enumerate(column_sums):
+            if column_sum > 0:
+                p_matrix[:, j] = normalized[:, j] / column_sum
+            else:
+                p_matrix[:, j] = 1.0 / matrix.shape[0]
+
+        entropy = np.zeros(matrix.shape[1])
+        for j in range(matrix.shape[1]):
+            p = p_matrix[:, j]
+            p = p[p > 0]
+            entropy[j] = -np.sum(p * np.log(p)) / np.log(matrix.shape[0])
+
+        diversity = 1 - entropy
+        diversity_sum = np.sum(diversity)
+        if diversity_sum <= 1e-12:
+            weights = np.full(len(indicator_ids), 1.0 / len(indicator_ids))
+        else:
+            weights = diversity / diversity_sum
+
+        return dict(zip(indicator_ids, weights.tolist()))
+    except Exception as e:
+        print(f"熵权法权重计算失败: {e}")
         return None
 
 def calculate_indicator_score_new(value: float, range_data: dict) -> tuple:
@@ -220,70 +306,49 @@ def calculate_indicator_score_new(value: float, range_data: dict) -> tuple:
         poor_max = poor.get('max', 0)
         verypoor_val = verypoor.get('value', 0)
         
-        # 检查优秀等级
-        if excellent.get('operator') == '≤' and value <= excellent_val:
-            return excellent_score, '优'
-        elif excellent.get('operator') == '≥' and value >= excellent_val:
-            return excellent_score, '优'
-        
-        # 检查很差等级
-        if verypoor.get('operator') == '≤' and value <= verypoor_val:
-            return verypoor_score, '很差'
-        elif verypoor.get('operator') == '≥' and value >= verypoor_val:
-            return verypoor_score, '很差'
-        
-        # 在范围内进行插值计算
-        # 检查良好等级范围
-        if good_min <= value <= good_max:
-            # 在良好范围内插值
-            if good_max > good_min:
-                ratio = (value - good_min) / (good_max - good_min)
-                score = good_score + ratio * (excellent_score - good_score)
-            else:
-                score = good_score
-            return min(excellent_score, max(good_score, score)), '良'
-        
-        # 检查一般等级范围
-        if avg_min <= value <= avg_max:
-            # 在一般范围内插值
-            if avg_max > avg_min:
-                ratio = (value - avg_min) / (avg_max - avg_min)
-                score = average_score + ratio * (good_score - average_score)
-            else:
-                score = average_score
-            return min(good_score, max(average_score, score)), '一般'
-        
-        # 检查较差等级范围
-        if poor_min <= value <= poor_max:
-            # 在较差范围内插值
-            if poor_max > poor_min:
-                ratio = (value - poor_min) / (poor_max - poor_min)
-                score = poor_score + ratio * (average_score - poor_score)
-            else:
-                score = poor_score
-            return min(average_score, max(poor_score, score)), '较差'
-        
-        # 检查是否在优秀和良好之间
-        if excellent.get('operator') == '≤' and good_max < value < excellent_val:
-            ratio = (value - good_max) / (excellent_val - good_max)
-            score = good_score + ratio * (excellent_score - good_score)
-            return min(excellent_score, max(good_score, score)), '良'
-        elif excellent.get('operator') == '≥' and excellent_val < value < good_min:
-            ratio = (good_min - value) / (good_min - excellent_val)
-            score = good_score + ratio * (excellent_score - good_score)
-            return min(excellent_score, max(good_score, score)), '良'
-        
-        # 检查是否在很差和较差之间
-        if verypoor.get('operator') == '≤' and verypoor_val < value < poor_min:
-            ratio = (value - verypoor_val) / (poor_min - verypoor_val)
-            score = verypoor_score + ratio * (poor_score - verypoor_score)
-            return min(poor_score, max(verypoor_score, score)), '较差'
-        elif verypoor.get('operator') == '≥' and poor_max < value < verypoor_val:
-            ratio = (verypoor_val - value) / (verypoor_val - poor_max)
-            score = verypoor_score + ratio * (poor_score - verypoor_score)
-            return min(poor_score, max(verypoor_score, score)), '较差'
-        
-        # 默认返回较差等级
+        lower_is_better = excellent.get('operator') == '≤'
+
+        def interpolate(x, x1, x2, y1, y2):
+            if abs(x2 - x1) < 1e-12:
+                return y1
+            ratio = (x - x1) / (x2 - x1)
+            return y1 + ratio * (y2 - y1)
+
+        if lower_is_better:
+            if value <= excellent_val:
+                return excellent_score, '优'
+            if value >= verypoor_val:
+                return verypoor_score, '很差'
+            if good_min <= value <= good_max:
+                return interpolate(value, good_min, good_max, excellent_score, good_score), '良'
+            if avg_min <= value <= avg_max:
+                return interpolate(value, avg_min, avg_max, good_score, average_score), '一般'
+            if poor_min <= value <= poor_max:
+                return interpolate(value, poor_min, poor_max, average_score, poor_score), '较差'
+            if good_max < value < avg_min:
+                return interpolate(value, good_max, avg_min, good_score, average_score), '一般'
+            if avg_max < value < poor_min:
+                return interpolate(value, avg_max, poor_min, average_score, poor_score), '较差'
+            if poor_max < value < verypoor_val:
+                return interpolate(value, poor_max, verypoor_val, poor_score, verypoor_score), '较差'
+        else:
+            if value >= excellent_val:
+                return excellent_score, '优'
+            if value <= verypoor_val:
+                return verypoor_score, '很差'
+            if good_min <= value <= good_max:
+                return interpolate(value, good_min, good_max, good_score, excellent_score), '良'
+            if avg_min <= value <= avg_max:
+                return interpolate(value, avg_min, avg_max, average_score, good_score), '一般'
+            if poor_min <= value <= poor_max:
+                return interpolate(value, poor_min, poor_max, poor_score, average_score), '较差'
+            if verypoor_val < value < poor_min:
+                return interpolate(value, verypoor_val, poor_min, verypoor_score, poor_score), '较差'
+            if poor_max < value < avg_min:
+                return interpolate(value, poor_max, avg_min, average_score, average_score), '一般'
+            if avg_max < value < good_min:
+                return interpolate(value, avg_max, good_min, good_score, good_score), '良'
+
         return poor_score, '较差'
     except Exception as e:
         print(f"[ERROR] 计算指标得分时出错: {e}")
@@ -428,17 +493,38 @@ def calculate_weights():
                 app_state['selected_indicators'][i]['id']: weight_values[i]
                 for i in range(n)
             }
-            
+
+        elif method == 'entropy':
+            data_matrix = data.get('data_matrix')
+            if not data_matrix:
+                return jsonify({
+                    'success': False,
+                    'message': '熵权法需要提供真实样本数据矩阵'
+                })
+
+            indicator_ids = [indicator['id'] for indicator in app_state['selected_indicators']]
+            benefit_flags = [
+                bool(indicator.get('is_positive', True))
+                for indicator in app_state['selected_indicators']
+            ]
+            weights = calculate_entropy_weights(data_matrix, indicator_ids, benefit_flags)
+            if weights is None:
+                return jsonify({
+                    'success': False,
+                    'message': '熵权法权重计算失败'
+                })
+             
         elif method == 'fahp':
             # FAHP模糊层次分析法
             level1_matrix = data.get('level1_matrix', [])
             level2_matrices = data.get('level2_matrices', {})
             
             # 计算一级指标权重
-            if len(level1_matrix) != 3 or any(len(row) != 3 for row in level1_matrix):
+            n = len(level1_matrix)
+            if n < 2 or any(len(row) != n for row in level1_matrix):
                 return jsonify({
                     'success': False,
-                    'message': '一级指标判断矩阵维度应为 3x3'
+                    'message': f'一级指标判断矩阵维度应为 {n}x{n}，且至少需要2个指标'
                 })
             
             level1_weights, level1_ci = calculate_fahp_weights(level1_matrix)
@@ -450,7 +536,23 @@ def calculate_weights():
             
             # 计算二级指标权重并合成最终权重
             final_weights = {}
-            categories = ['technical', 'safety', 'economic']
+            
+            category_order = ['technical', 'safety', 'economic']
+            categories = data.get('level1_categories') or [
+                category for category in category_order
+                if any(ind['id'].startswith(category) for ind in app_state['selected_indicators'])
+            ]
+            categories = [
+                category for category in categories
+                if category in category_order
+                and any(ind['id'].startswith(category) for ind in app_state['selected_indicators'])
+            ]
+
+            if len(categories) != len(level1_weights):
+                return jsonify({
+                    'success': False,
+                    'message': '一级指标分类数量与一级权重数量不一致'
+                })
             
             for i, category in enumerate(categories):
                 if category in level2_matrices:
@@ -471,6 +573,11 @@ def calculate_weights():
                     for j, indicator in enumerate(category_indicators):
                         if j < len(level2_weights):
                             final_weights[indicator['id']] = level1_weights[i] * level2_weights[j]
+            
+            total_weight = sum(final_weights.values())
+            if abs(total_weight - 1.0) > 1e-6:
+                print(f"警告: FAHP综合权重和为 {total_weight}，执行数值归一化")
+                final_weights = {k: v / total_weight for k, v in final_weights.items()}
             
             weights = final_weights
         
@@ -501,10 +608,11 @@ def calculate_fahp_level1():
         data = request.get_json()
         matrix = data.get('matrix', [])
         
-        if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
+        n = len(matrix)
+        if n < 2 or any(len(row) != n for row in matrix):
             return jsonify({
                 'success': False,
-                'message': '一级指标判断矩阵维度应为 3x3'
+                'message': f'一级指标判断矩阵维度应为 {n}x{n}，且至少需要2个指标'
             })
         
         weights, ci = calculate_fahp_weights(matrix)
@@ -793,6 +901,20 @@ def test_page():
     return render_template('test.html')
 
 if __name__ == '__main__':
+    import argparse
+    
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='露天台阶爆破效果综合评价系统')
+    parser.add_argument('--external', action='store_true', 
+                       help='启用外网访问（警告：仅用于演示，生产环境请配置防火墙）')
+    parser.add_argument('--ngrok', action='store_true', 
+                       help='使用ngrok创建公网隧道')
+    parser.add_argument('--ngrok-token', type=str, 
+                       help='ngrok认证token')
+    parser.add_argument('--port', type=int, default=5000, 
+                       help='指定端口号（默认：5000）')
+    args = parser.parse_args()
+    
     # 创建必要的目录
     os.makedirs('templates', exist_ok=True)
     os.makedirs('static', exist_ok=True)
@@ -806,6 +928,48 @@ if __name__ == '__main__':
     
     print("露天台阶爆破效果综合评价系统 - 演示版本")
     print("启动Flask服务器...")
-    print("访问地址: http://localhost:5000")
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # 配置ngrok
+    ngrok_tunnel = None
+    if args.ngrok and NGROK_AVAILABLE:
+        try:
+            # 设置authtoken
+            if args.ngrok_token:
+                ngrok.set_auth_token(args.ngrok_token)
+            else:
+                # 使用提供的默认token
+                ngrok.set_auth_token("31PPEy8orAqByvl8mLu8ekK1dlw_5j9dsMKk1cZvVbGpKocPq")
+            
+            print("🚀 正在创建ngrok隧道...")
+            ngrok_tunnel = ngrok.connect(args.port)
+            public_url = ngrok_tunnel.public_url
+            print(f"🌐 公网访问地址: {public_url}")
+            print(f"🏠 本地访问地址: http://localhost:{args.port}")
+            print("⚠️  注意: ngrok隧道将在程序结束时自动关闭")
+        except Exception as e:
+            print(f"❌ ngrok隧道创建失败: {e}")
+            print("将使用本地模式启动...")
+    elif args.ngrok and not NGROK_AVAILABLE:
+        print("❌ 无法使用ngrok: pyngrok未安装")
+        print("请运行: pip install pyngrok")
+    
+    if args.external:
+        print("⚠️  警告: 已启用外网访问模式")
+        print("⚠️  请确保在安全的网络环境中使用")
+        print(f"🌐 外网访问地址: http://0.0.0.0:{args.port}")
+        print(f"🏠 本地访问地址: http://localhost:{args.port}")
+        host = '0.0.0.0'
+    else:
+        print(f"🏠 本地访问地址: http://localhost:{args.port}")
+        print("💡 提示: 使用 --external 参数启用外网访问")
+        print("💡 提示: 使用 --ngrok 参数创建公网隧道")
+        host = '127.0.0.1'
+    
+    try:
+        app.run(host=host, port=args.port, debug=True)
+    finally:
+        # 清理ngrok隧道
+        if ngrok_tunnel:
+            print("\n🔄 正在关闭ngrok隧道...")
+            ngrok.disconnect(ngrok_tunnel.public_url)
+            ngrok.kill()

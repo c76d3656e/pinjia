@@ -60,6 +60,32 @@
 .progress-bar {
     transition: width 0.6s ease;
 }
+/* 修复 select 字体截断 */
+#weight-method {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 42px;
+}
+/* 修复专家打分法输入框重叠 */
+#weight-expert .form-group.row {
+    margin-left: 0;
+    margin-right: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+}
+#weight-expert .form-group.row .col-sm-6 {
+    flex: 1;
+    padding: 0;
+}
+#weight-expert .form-group.row label.col-sm-6 {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 100px;
+    white-space: nowrap;
+    padding: 0;
+}
 </style>
 <div id="step2" class="tab-pane">
     <div class="card">
@@ -146,7 +172,7 @@
                 <div class="alert alert-info">
                     <strong>FAHP模糊层次分析法说明：</strong><br>
                     基于模糊互补判断矩阵的层次分析法，分两个层次进行权重计算：<br>
-                    <strong>第一步：</strong>对一级指标（爆破质量、爆破安全、爆破经济）进行权重评分<br>
+                    <strong>第一步：</strong>对一级指标（爆破质量、爆破安全、穿爆成本）进行权重评分<br>
                     <strong>第二步：</strong>对每个一级指标下的二级指标进行权重评分<br>
                     <strong>评分范围：</strong>0.1-0.9，其中0.5表示同等重要，>0.5表示行指标比列指标重要
                 </div>
@@ -256,11 +282,42 @@ function showWeightMethod() {
 
 // FAHP相关函数
 function generateFAHPLevel1Matrix() {
-    const level1Indicators = [
-        { id: 'quality', name: '爆破质量' },
-        { id: 'safety', name: '爆破安全' },
-        { id: 'economy', name: '爆破经济' }
-    ];
+    // 根据选中的指标动态确定一级指标分类
+    const categories = {
+        'technical': { id: 'quality', name: '爆破质量', hasIndicators: false },
+        'safety': { id: 'safety', name: '爆破安全', hasIndicators: false },
+        'economic': { id: 'economy', name: '穿爆成本', hasIndicators: false }
+    };
+    
+    // 检查每个分类是否有选中的指标
+    selectedIndicators.forEach(indicator => {
+        if (indicator.id.startsWith('technical')) {
+            categories.technical.hasIndicators = true;
+        } else if (indicator.id.startsWith('safety')) {
+            categories.safety.hasIndicators = true;
+        } else if (indicator.id.startsWith('economic')) {
+            categories.economic.hasIndicators = true;
+        }
+    });
+    
+    // 只包含有选中指标的分类
+    const level1Indicators = [];
+    Object.keys(categories).forEach(key => {
+        if (categories[key].hasIndicators) {
+            level1Indicators.push({
+                id: categories[key].id,
+                categoryId: key,
+                name: categories[key].name
+            });
+        }
+    });
+    
+    // 如果只有一个分类，显示提示信息
+    if (level1Indicators.length <= 1) {
+        document.getElementById('fahp-level1-matrix').innerHTML = 
+            '<div class="alert alert-warning">FAHP方法需要至少选择两个不同分类的指标才能进行一级指标权重计算。</div>';
+        return;
+    }
     
     const n = level1Indicators.length;
     let html = '<table class="table table-bordered ahp-matrix-table">';
@@ -295,11 +352,12 @@ function generateFAHPLevel1Matrix() {
 }
 
 function updateFAHPMatrix(level, i, j) {
-    const level1Indicators = [
-        { id: 'quality', name: '爆破质量' },
-        { id: 'safety', name: '爆破安全' },
-        { id: 'economy', name: '爆破经济' }
-    ];
+    // 动态获取当前的一级指标
+    const level1Indicators = getCurrentLevel1Indicators();
+    
+    if (i >= level1Indicators.length || j >= level1Indicators.length) {
+        return; // 防止索引越界
+    }
     
     const indicator1 = level1Indicators[i];
     const indicator2 = level1Indicators[j];
@@ -313,12 +371,48 @@ function updateFAHPMatrix(level, i, j) {
     }
 }
 
+// 获取当前选中的一级指标分类
+function getCurrentLevel1Indicators() {
+    const categories = {
+        'technical': { id: 'quality', name: '爆破质量', hasIndicators: false },
+        'safety': { id: 'safety', name: '爆破安全', hasIndicators: false },
+        'economic': { id: 'economy', name: '穿爆成本', hasIndicators: false }
+    };
+    
+    // 检查每个分类是否有选中的指标
+    selectedIndicators.forEach(indicator => {
+        if (indicator.id.startsWith('technical')) {
+            categories.technical.hasIndicators = true;
+        } else if (indicator.id.startsWith('safety')) {
+            categories.safety.hasIndicators = true;
+        } else if (indicator.id.startsWith('economic')) {
+            categories.economic.hasIndicators = true;
+        }
+    });
+    
+    // 只包含有选中指标的分类
+    const level1Indicators = [];
+    Object.keys(categories).forEach(key => {
+        if (categories[key].hasIndicators) {
+            level1Indicators.push({
+                id: categories[key].id,
+                categoryId: key,
+                name: categories[key].name
+            });
+        }
+    });
+    
+    return level1Indicators;
+}
+
 async function calculateFAHPLevel1() {
-    const level1Indicators = [
-        { id: 'quality', name: '爆破质量' },
-        { id: 'safety', name: '爆破安全' },
-        { id: 'economy', name: '爆破经济' }
-    ];
+    // 动态获取当前选中的一级指标
+    const level1Indicators = getCurrentLevel1Indicators();
+    
+    if (level1Indicators.length <= 1) {
+        alert('FAHP方法需要至少选择两个不同分类的指标才能进行一级指标权重计算。');
+        return;
+    }
     
     // 收集一级指标判断矩阵数据
     const n = level1Indicators.length;
@@ -376,11 +470,8 @@ async function calculateFAHPLevel1() {
 }
 
 function displayFAHPLevel1Results(data) {
-    const level1Indicators = [
-        { id: 'quality', name: '爆破质量' },
-        { id: 'safety', name: '爆破安全' },
-        { id: 'economy', name: '爆破经济' }
-    ];
+    // 动态获取当前选中的一级指标
+    const level1Indicators = getCurrentLevel1Indicators();
     
     let html = '<div class="alert alert-success">';
     html += '<h6><i class="fas fa-check-circle"></i> 一级指标权重计算结果</h6>';
@@ -411,7 +502,7 @@ function generateFAHPLevel2Interface(level1Weights) {
     const categories = {
         'technical': { name: '爆破质量指标', indicators: [] },
         'safety': { name: '爆破安全指标', indicators: [] },
-        'economic': { name: '爆破经济指标', indicators: [] }
+        'economic': { name: '穿爆成本指标', indicators: [] }
     };
     
     // 分类选中的指标
@@ -425,14 +516,20 @@ function generateFAHPLevel2Interface(level1Weights) {
         }
     });
     
+    const level1Indicators = getCurrentLevel1Indicators();
+    const level1WeightByCategory = {};
+    level1Indicators.forEach((indicator, index) => {
+        level1WeightByCategory[indicator.categoryId] = level1Weights[index];
+    });
+    
     let html = '';
     
-    Object.keys(categories).forEach((categoryId, categoryIndex) => {
+    Object.keys(categories).forEach((categoryId) => {
         const category = categories[categoryId];
         if (category.indicators.length > 1) {
             html += `<div class="card mb-3">`;
             html += `<div class="card-header bg-light">`;
-            html += `<h6 class="mb-0">${category.name} (权重: ${(level1Weights[categoryIndex] * 100).toFixed(2)}%)</h6>`;
+            html += `<h6 class="mb-0">${category.name} (权重: ${((level1WeightByCategory[categoryId] || 0) * 100).toFixed(2)}%)</h6>`;
             html += `</div>`;
             html += `<div class="card-body">`;
             html += generateFAHPLevel2Matrix(categoryId, category.indicators);
@@ -815,17 +912,19 @@ function checkFAHPLevel2Complete() {
 // FAHP最终权重计算
 async function calculateFAHPFinal() {
     try {
-        // 收集一级指标矩阵数据
-        const level1Indicators = [
-            { id: 'quality', name: '爆破质量' },
-            { id: 'safety', name: '爆破安全' },
-            { id: 'economy', name: '爆破经济' }
-        ];
+        // 动态获取当前选中的一级指标
+        const level1Indicators = getCurrentLevel1Indicators();
         
+        if (level1Indicators.length <= 1) {
+            alert('FAHP方法需要至少选择两个不同分类的指标才能进行最终权重计算。');
+            return;
+        }
+        
+        const n = level1Indicators.length;
         const level1Matrix = [];
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < n; i++) {
             level1Matrix[i] = [];
-            for (let j = 0; j < 3; j++) {
+            for (let j = 0; j < n; j++) {
                 if (i === j) {
                     level1Matrix[i][j] = 0.5;
                 } else {
@@ -879,6 +978,9 @@ async function calculateFAHPFinal() {
                     }
                 }
                 level2Matrices[categoryId] = matrix;
+            } else if (indicators.length === 1) {
+                // 对于只有一个指标的类别，创建1x1矩阵，权重为1
+                level2Matrices[categoryId] = [[0.5]];
             }
         });
         
@@ -890,6 +992,7 @@ async function calculateFAHPFinal() {
             body: JSON.stringify({
                 method: 'fahp',
                 level1_matrix: level1Matrix,
+                level1_categories: level1Indicators.map(indicator => indicator.categoryId),
                 level2_matrices: level2Matrices
             })
         });

@@ -884,6 +884,11 @@ class ReportGenerator(LoggerMixin):
             str: 等级描述
         """
         descriptions = {
+            "优秀": "优秀",
+            "良好": "良好",
+            "一般": "一般",
+            "较差": "较差",
+            "很差": "很差",
             "Excellent": "优秀",
             "Good": "良好", 
             "Average": "一般",

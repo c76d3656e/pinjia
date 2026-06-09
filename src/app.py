@@ -23,6 +23,7 @@ from views.main_view import MainView
 from utils.config import ConfigManager
 
 
+@rio.i_know_what_im_doing
 class BlastingEvaluationApp(rio.App):
     """
     露天台阶爆破效果综合评价系统主应用类
@@ -38,17 +39,16 @@ class BlastingEvaluationApp(rio.App):
         app_state: 应用状态字典
     """
     
-    def __init__(self, config: ConfigManager):
+    def __init__(self):
         """
         初始化应用程序
-        
-        Args:
-            config: 配置管理器实例
         """
         super().__init__()
         
         self.logger = logging.getLogger(__name__)
-        self.config = config
+        
+        # 初始化配置
+        self.config = ConfigManager()
         
         # 初始化控制器
         self.evaluation_controller = EvaluationController()
@@ -79,10 +79,7 @@ class BlastingEvaluationApp(rio.App):
             self.logger.info("构建应用程序界面")
             
             # 创建主视图
-            self.main_view = MainView(
-                controller=self.evaluation_controller,
-                app_state=self.app_state
-            )
+            self.main_view = MainView()
             
             return self.main_view
             

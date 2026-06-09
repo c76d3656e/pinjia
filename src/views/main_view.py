@@ -39,6 +39,7 @@ class AppState:
     success_message: str = ""
 
 
+@rio.i_know_what_im_doing
 class MainView(rio.Component, LoggerMixin):
     """
     主视图组件
@@ -57,37 +58,37 @@ class MainView(rio.Component, LoggerMixin):
     # 组件状态
     app_state: AppState = AppState()
     
-    def __init__(self):
+    def __post_init__(self):
         """
         初始化主视图组件
         """
-        super().__init__()
-        
         # 步骤标题
         self.step_titles = [
             "指标选择",
-            "权重设置", 
+            "权重设置",
             "范围设置",
             "数据输入",
             "评价结果"
         ]
-        
+
         # 初始化评价控制器
         self._initialize_controller()
-        
+
         self.logger.info("主视图组件初始化完成")
     
     def _initialize_controller(self) -> None:
         """
         初始化评价控制器
         
-        创建评价控制器实例并加载指标体系。
+        从应用上下文获取控制器实例并加载指标体系。
         """
         try:
             self.app_state.is_loading = True
             
-            # 创建控制器
-            controller = EvaluationController("indicators.json")
+            # 从应用上下文获取控制器
+            from rio import get_app
+            app = get_app()
+            controller = app.evaluation_controller
             
             # 加载指标体系
             controller.load_indicators()
@@ -140,10 +141,7 @@ class MainView(rio.Component, LoggerMixin):
         return rio.Card(
             content=rio.Row(
                 children=[
-                    rio.Icon(
-                        icon="material/analytics",
-                        fill=rio.Color.PRIMARY
-                    ),
+                    # Remove icon to avoid cache issues
                     rio.Spacer(),
                     rio.Column(
                         children=[
@@ -167,7 +165,7 @@ class MainView(rio.Component, LoggerMixin):
                     rio.Spacer(),
                     rio.Button(
                         text="帮助",
-                        icon="material/help",
+                        # Remove icon to avoid cache issues
                         style=rio.ButtonStyle.MINOR,
                         on_press=self._show_help
                     )
@@ -190,18 +188,18 @@ class MainView(rio.Component, LoggerMixin):
             # 确定按钮样式
             if i == self.app_state.current_step:
                 style = rio.ButtonStyle.MAJOR
-                icon = "material/radio_button_checked"
+                prefix = "● "  # Use text instead of icon
             elif i < self.app_state.current_step:
                 style = rio.ButtonStyle.MINOR
-                icon = "material/check_circle"
+                prefix = "✓ "  # Use text instead of icon
             else:
                 style = rio.ButtonStyle.PLAIN_TEXT
-                icon = "material/radio_button_unchecked"
+                prefix = "○ "  # Use text instead of icon
             
             step_buttons.append(
                 rio.Button(
-                    text=f"{i}. {title}",
-                    icon=icon,
+                    text=f"{prefix}{i}. {title}",
+                    # Remove icon to avoid cache issues
                     style=style,
                     on_press=lambda step=i: self._navigate_to_step(step)
                 )
@@ -333,7 +331,7 @@ class MainView(rio.Component, LoggerMixin):
                         )
                     ),
                     rio.Text(
-                        "请选择用于评价的指标项目。系统提供爆破质量、安全性和经济性三大类指标。"
+                        "请选择用于评价的指标项目。系统提供爆破质量、安全性和穿爆成本三大类指标。"
                     ),
                     rio.Spacer(height=1.0),
                     rio.Text("指标选择组件将在后续实现...")

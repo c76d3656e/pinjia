@@ -12,16 +12,43 @@
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
+
+# Configure Rio cache BEFORE importing any Rio components
+def configure_rio_cache() -> None:
+    """
+    Re-point Rio's asset cache to a workspace directory (AppData is blocked in the sandbox).
+    """
+    try:
+        cache_root = Path(__file__).parent / "data" / "rio_cache"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        cache_dir = cache_root / "rio"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Set environment variable before importing rio
+        os.environ["RIO_CACHE_DIR"] = str(cache_dir)
+        os.environ["RIO_USER_CACHE_DIR"] = str(cache_root)
+        
+        print(f"Rio cache configured to: {cache_dir}")
+        return True
+    except Exception as e:
+        print(f"Failed to configure Rio cache: {e}")
+        return False
+
+# Configure cache before any other imports
+configure_rio_cache()
 
 # 添加src目录到Python路径
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-from src.app import BlastingEvaluationApp
 from src.utils.logger import setup_logger
 from src.utils.config import ConfigManager
+
+
+
 
 
 def main():
@@ -38,13 +65,15 @@ def main():
         setup_logger()
         logger = logging.getLogger(__name__)
         logger.info("启动露天台阶爆破效果综合评价系统")
-        
-        # 加载配置
-        config = ConfigManager()
-        logger.info(f"配置加载完成: {config.get('App', 'Title')} v{config.get('App', 'Version')}")
+
+        from src.app import BlastingEvaluationApp
         
         # 创建应用实例
-        app = BlastingEvaluationApp(config)
+        app = BlastingEvaluationApp()
+        
+        # 获取配置信息
+        config = app.config
+        logger.info(f"配置加载完成: {config.get('App', 'Title')} v{config.get('App', 'Version')}")
         
         # 启动应用
         host = config.get('Server', 'Host', fallback='localhost')

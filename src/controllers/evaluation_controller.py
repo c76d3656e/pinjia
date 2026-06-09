@@ -90,7 +90,7 @@ class EvaluationController(LoggerMixin):
         创建默认指标体系
         
         根据开发手册中的指标定义创建默认的指标体系。
-        包含爆破质量指标、爆破安全指标、爆破经济指标等分类。
+         包含爆破质量指标、爆破安全指标、穿爆成本指标等分类。
         """
         # 爆破质量指标
         technical_category = IndicatorCategory(
@@ -102,11 +102,10 @@ class EvaluationController(LoggerMixin):
         technical_indicators = [
             Indicator("technical_1", "大块率", "%", "爆破后大块石料所占比例", False),
             Indicator("technical_2", "根底率", "%", "爆破后根底残留比例", False),
-            Indicator("technical_3", "后冲距离", "m", "爆破后岩石向后抛掷距离", True),
-            Indicator("technical_4", "前冲距离", "m", "爆破后岩石向前抛掷距离", True),
-            Indicator("technical_5", "抛掷率", "%", "爆破岩石抛掷到指定区域的比例", True),
             Indicator("technical_6", "松散系数", "", "爆破后岩石松散程度系数", True),
-            Indicator("technical_7", "爆堆高度", "m", "爆破后形成的岩石堆高度", True)
+            Indicator("technical_3", "后冲距离", "m", "爆破后岩石向后抛掷距离", True),
+            Indicator("technical_5", "抛掷率", "%", "爆破岩石抛掷到指定区域的比例", True),
+            Indicator("technical_4", "前冲距离", "m", "爆破后岩石向前抛掷距离", True)
         ]
         
         for indicator in technical_indicators:
@@ -120,18 +119,18 @@ class EvaluationController(LoggerMixin):
         )
         
         safety_indicators = [
-            Indicator("safety_1", "飞石最远距离", "m", "爆破产生的飞石最远距离", False),
-            Indicator("safety_2", "爆破振动速度", "cm/s", "爆破引起的地面振动速度", False)
+            Indicator("safety_1", "最远飞石距离", "m", "爆破产生的飞石最远距离", False),
+            Indicator("safety_2", "峰值振动速度", "cm/s", "爆破引起的地面振动速度峰值", False)
         ]
         
         for indicator in safety_indicators:
             safety_category.add_indicator(indicator)
         
-        # 爆破经济指标
+        # 穿爆成本指标
         economic_category = IndicatorCategory(
             id="economic",
-            name="爆破经济指标",
-            description="评价爆破经济效益的相关指标"
+            name="穿爆成本指标",
+            description="评价穿爆成本效益的相关指标"
         )
         
         economic_indicators = [
@@ -221,7 +220,8 @@ class EvaluationController(LoggerMixin):
         method: str,
         category_weights: Optional[Dict[str, float]] = None,
         indicator_weights: Optional[Dict[str, Dict[str, float]]] = None,
-        comparison_matrix: Optional[np.ndarray] = None
+        comparison_matrix: Optional[np.ndarray] = None,
+        entropy_data: Optional[np.ndarray] = None
     ) -> Dict[str, float]:
         """
         计算指标权重
@@ -231,6 +231,7 @@ class EvaluationController(LoggerMixin):
             category_weights: 一级指标(分类)权重
             indicator_weights: 二级指标权重 {category_id: {indicator_id: weight}}
             comparison_matrix: 判断矩阵 (AHP方法使用)
+            entropy_data: 熵权法样本矩阵，行是样本，列对应选中指标
             
         Returns:
             Dict[str, float]: 最终权重 {indicator_id: weight}
@@ -260,8 +261,9 @@ class EvaluationController(LoggerMixin):
             return self._calculate_ahp_weights(comparison_matrix)
         
         elif weight_method == WeightMethod.ENTROPY:
-            # 熵权法 (需要历史数据，这里简化处理)
-            return self._calculate_entropy_weights()
+            if entropy_data is None:
+                raise ValueError("熵权法需要提供真实样本数据矩阵")
+            return self._calculate_entropy_weights(entropy_data)
         
         else:
             raise ValueError(f"不支持的权重计算方法: {method}")
@@ -336,27 +338,20 @@ class EvaluationController(LoggerMixin):
         self.logger.info("使用AHP法计算权重")
         return weights
     
-    def _calculate_entropy_weights(self) -> Dict[str, float]:
+    def _calculate_entropy_weights(self, data_matrix: np.ndarray) -> Dict[str, float]:
         """
         计算熵权法权重
         
-        注意: 这里简化处理，实际应用中需要历史数据
+        注意: 熵权法必须基于真实样本数据，不能使用模拟数据。
         
         Returns:
             Dict[str, float]: 权重字典
         """
-        # 简化处理：生成模拟数据
-        n_samples = 10
-        n_indicators = len(self.selected_indicators)
-        
-        # 生成随机数据矩阵
-        np.random.seed(42)  # 确保结果可重现
-        data_matrix = np.random.rand(n_samples, n_indicators)
-        
         indicator_ids = [indicator.id for indicator in self.selected_indicators]
-        weights = self.evaluation_model.calculate_entropy_weights(data_matrix, indicator_ids)
+        benefit_flags = [indicator.is_positive for indicator in self.selected_indicators]
+        weights = self.evaluation_model.calculate_entropy_weights(data_matrix, indicator_ids, benefit_flags)
         
-        self.logger.info("使用熵权法计算权重（基于模拟数据）")
+        self.logger.info("使用熵权法计算权重")
         return weights
     
     def set_indicator_weights(self, weights: Dict[str, float]) -> None:

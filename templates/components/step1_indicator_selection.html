@@ -1,10 +1,16 @@
 <!-- 步骤1: 指标选择组件 -->
 <style>
+.category-row {
+    display: flex;
+    gap: 16px;
+}
 .category-section {
     border: 1px solid #e9ecef;
     border-radius: 8px;
     padding: 15px;
     background-color: #f8f9fa;
+    flex: 1;
+    min-width: 0;
 }
 .category-title {
     color: #495057;
@@ -72,11 +78,11 @@ async function loadIndicators() {
 // 按分类显示指标列表
 function displayIndicatorsByCategory(categories) {
     const listDiv = document.getElementById('indicators-list');
-    let html = '';
+    let html = '<div class="category-row">';
     
     categories.forEach(category => {
         html += `
-            <div class="category-section mb-4">
+            <div class="category-section">
                 <h5 class="category-title">
                     <i class="fas fa-folder-open"></i> ${category.name}
                     <span class="badge badge-secondary ml-2">${category.indicators.length}个指标</span>
@@ -104,6 +110,8 @@ function displayIndicatorsByCategory(categories) {
             </div>
         `;
     });
+    
+    html += '</div>';
     
     listDiv.innerHTML = html;
 }

@@ -126,6 +126,17 @@ class IndicatorResult:
     grade: EvaluationGrade
     weighted_score: float
 
+    @property
+    def indicator_id(self) -> str:
+        return self.indicator.id
+
+    @property
+    def normalized_value(self) -> float:
+        return self.measured_value
+
+    def get_weighted_score(self) -> float:
+        return self.weighted_score
+
 
 @dataclass
 class CategoryResult:
@@ -147,6 +158,17 @@ class CategoryResult:
     weighted_score: float
     grade: EvaluationGrade
 
+    @property
+    def category_id(self) -> str:
+        return self.category.id
+
+    @property
+    def score(self) -> float:
+        return self.total_score
+
+    def get_weighted_score(self) -> float:
+        return self.weighted_score
+
 
 @dataclass
 class EvaluationResult:
@@ -167,6 +189,14 @@ class EvaluationResult:
     weight_method: WeightMethod
     evaluation_time: datetime = field(default_factory=datetime.now)
     summary: str = ""
+
+    @property
+    def indicator_results(self) -> List[IndicatorResult]:
+        return [
+            indicator_result
+            for category_result in self.category_results
+            for indicator_result in category_result.indicator_results
+        ]
     
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -327,13 +357,29 @@ class EvaluationModel:
             ValueError: 矩阵不满足一致性要求
         """
         n = len(items)
+        comparison_matrix = np.array(comparison_matrix, dtype=float)
         if comparison_matrix.shape != (n, n):
             raise ValueError("判断矩阵维度不匹配")
+        if n == 0:
+            raise ValueError("判断矩阵不能为空")
+        if np.any(comparison_matrix <= 0):
+            raise ValueError("判断矩阵元素必须为正数")
+        if not np.allclose(np.diag(comparison_matrix), 1.0, atol=1e-6):
+            raise ValueError("判断矩阵对角线元素必须为1")
+        if not np.allclose(comparison_matrix * comparison_matrix.T, np.ones((n, n)), atol=1e-3):
+            raise ValueError("判断矩阵必须满足互反性 aij * aji = 1")
+        if n == 1:
+            return {items[0]: 1.0}
         
         # 计算特征向量
         eigenvalues, eigenvectors = np.linalg.eig(comparison_matrix)
         max_eigenvalue = np.max(eigenvalues.real)
         max_eigenvector = eigenvectors[:, np.argmax(eigenvalues.real)].real
+
+        if np.sum(max_eigenvector) < 0:
+            max_eigenvector = -max_eigenvector
+        if np.any(max_eigenvector <= 0):
+            max_eigenvector = np.abs(max_eigenvector)
         
         # 归一化权重
         weights = max_eigenvector / np.sum(max_eigenvector)
@@ -349,30 +395,74 @@ class EvaluationModel:
         
         return dict(zip(items, weights))
     
-    def calculate_entropy_weights(self, data_matrix: np.ndarray, items: List[str]) -> Dict[str, float]:
+    def calculate_entropy_weights(
+        self,
+        data_matrix: np.ndarray,
+        items: List[str],
+        benefit_flags: Optional[List[bool]] = None
+    ) -> Dict[str, float]:
         """
         使用熵权法计算权重
         
         Args:
             data_matrix: 数据矩阵 (样本数 × 指标数)
             items: 指标列表
+            benefit_flags: 指标方向，True为正向指标，False为反向指标
             
         Returns:
             Dict[str, float]: 权重字典
         """
-        # 数据标准化
-        normalized_data = data_matrix / np.sum(data_matrix, axis=0)
+        data_matrix = np.array(data_matrix, dtype=float)
+        if data_matrix.ndim != 2:
+            raise ValueError("熵权法数据矩阵必须为二维数组")
+        if data_matrix.shape[1] != len(items):
+            raise ValueError("数据矩阵列数必须与指标数量一致")
+        if data_matrix.shape[0] < 2:
+            raise ValueError("熵权法至少需要2个样本")
+        if not np.all(np.isfinite(data_matrix)):
+            raise ValueError("数据矩阵包含无效数值")
+
+        if benefit_flags is None:
+            benefit_flags = [True] * len(items)
+        if len(benefit_flags) != len(items):
+            raise ValueError("指标方向数量必须与指标数量一致")
+
+        # 正向/反向指标无量纲化到[0, 1]
+        normalized_data = np.zeros_like(data_matrix, dtype=float)
+        for j in range(data_matrix.shape[1]):
+            column = data_matrix[:, j]
+            col_min = np.min(column)
+            col_max = np.max(column)
+            if abs(col_max - col_min) < 1e-12:
+                normalized_data[:, j] = 1.0
+            elif benefit_flags[j]:
+                normalized_data[:, j] = (column - col_min) / (col_max - col_min)
+            else:
+                normalized_data[:, j] = (col_max - column) / (col_max - col_min)
         
-        # 计算熵值
+        # 计算比重pij
+        column_sums = np.sum(normalized_data, axis=0)
+        p_matrix = np.zeros_like(normalized_data, dtype=float)
+        for j, column_sum in enumerate(column_sums):
+            if column_sum > 0:
+                p_matrix[:, j] = normalized_data[:, j] / column_sum
+            else:
+                p_matrix[:, j] = 1.0 / data_matrix.shape[0]
+
+        # 计算熵值 ej = -k * Σ(pij ln pij)，k = 1/ln(m)
         entropy = np.zeros(data_matrix.shape[1])
         for j in range(data_matrix.shape[1]):
-            p = normalized_data[:, j]
+            p = p_matrix[:, j]
             p = p[p > 0]  # 避免log(0)
-            if len(p) > 0:
-                entropy[j] = -np.sum(p * np.log(p)) / np.log(len(p))
+            entropy[j] = -np.sum(p * np.log(p)) / np.log(data_matrix.shape[0])
         
-        # 计算权重
-        weights = (1 - entropy) / np.sum(1 - entropy)
+        # 计算差异系数和权重
+        diversity = 1 - entropy
+        diversity_sum = np.sum(diversity)
+        if diversity_sum <= 1e-12:
+            weights = np.full(len(items), 1.0 / len(items))
+        else:
+            weights = diversity / diversity_sum
         
         return dict(zip(items, weights))
     
@@ -436,10 +526,10 @@ class EvaluationModel:
             if not indicator_results:
                 continue
             
-            # 计算分类总分
-            total_score = sum(result.score * result.weight for result in indicator_results)
-            category_weight = self.category_weights.get(category.id, 1.0)
-            weighted_score = total_score * category_weight
+            # 指标权重在本模型中表示最终综合权重，分类结果只做汇总，不重复乘一级权重。
+            category_weight = sum(result.weight for result in indicator_results)
+            weighted_score = sum(result.weighted_score for result in indicator_results)
+            total_score = weighted_score / category_weight if category_weight > 0 else 0.0
             
             # 确定分类等级
             if total_score >= 90:

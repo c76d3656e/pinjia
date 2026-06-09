@@ -73,7 +73,7 @@ pip install -r requirements.txt
 
 4. 运行应用
 ```bash
-python main.py
+python demo_app.py
 ```
 
 5. 打开浏览器访问 `http://localhost:8080`
