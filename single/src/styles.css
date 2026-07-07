@@ -645,42 +645,52 @@ tbody th {
 }
 
 .score-board div.score-item {
-  border: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.score-board div.score-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px 0 0 8px;
+  border-left: 5px solid transparent;
+  pointer-events: none;
 }
 
 .score-board div.score-item.grade-excellent {
   background: oklch(0.93 0.055 150);
 }
-.score-board div.score-item.grade-excellent strong {
-  color: oklch(0.35 0.14 150);
+.score-board div.score-item.grade-excellent::before {
+  border-left-color: oklch(0.43 0.13 150);
 }
 
 .score-board div.score-item.grade-good {
   background: oklch(0.94 0.05 135);
 }
-.score-board div.score-item.grade-good strong {
-  color: oklch(0.42 0.14 135);
+.score-board div.score-item.grade-good::before {
+  border-left-color: oklch(0.50 0.12 135);
 }
 
 .score-board div.score-item.grade-average {
   background: oklch(0.94 0.07 82);
 }
-.score-board div.score-item.grade-average strong {
-  color: oklch(0.50 0.16 82);
+.score-board div.score-item.grade-average::before {
+  border-left-color: oklch(0.60 0.14 82);
 }
 
 .score-board div.score-item.grade-poor {
   background: oklch(0.93 0.06 45);
 }
-.score-board div.score-item.grade-poor strong {
-  color: oklch(0.48 0.16 45);
+.score-board div.score-item.grade-poor::before {
+  border-left-color: oklch(0.58 0.14 45);
 }
 
 .score-board div.score-item.grade-bad {
   background: oklch(0.93 0.065 25);
 }
-.score-board div.score-item.grade-bad strong {
-  color: var(--danger);
+.score-board div.score-item.grade-bad::before {
+  border-left-color: var(--danger);
 }
 
 .score-board div.score-item .grade-badge {
