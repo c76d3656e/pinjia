@@ -82,7 +82,7 @@ export const DEFAULT_RANGES: Record<string, EvaluationRange> = {
   safety_1: rangeAtMost(100, 200),
   safety_2: rangeAtMost(5, 8),
   economic_1: rangeAtMost(0.45, 0.55),
-  economic_2: { satisfaction: [finiteInterval(25, 30)], tolerance: [finiteInterval(22, 25)] },
+  economic_2: { satisfaction: [finiteInterval(25, 30)], tolerance: [finiteInterval(30, 35)] },
 };
 
 const GRADE_SCORES = {
