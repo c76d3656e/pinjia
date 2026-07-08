@@ -92,19 +92,23 @@ export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTol
     if (sat.min == null || sat.max == null || interval.min == null || interval.max == null) {
       return interval;
     }
-    // 右侧偏离：区间整体在满意阈上方
-    if (interval.max > sat.max) {
-      return { min: sat.max, max: interval.max };
-    }
-    // 左侧偏离：区间整体在满意阈下方
-    if (interval.min < sat.min) {
-      return { min: interval.min, max: sat.min };
-    }
-    // 满意阈已超出容差范围：按索引推断左右（单个区间为右侧，两个区间时首左次右）
-    const isLeftSide = oldTolerance.length > 1 && index === 0;
-    if (isLeftSide) {
+    // 按设计位置确定左右（索引0为左侧，其余为右侧）
+    const isLeftDesign = oldTolerance.length > 1 && index === 0;
+    if (isLeftDesign) {
+      // 左侧偏离：内边界固定在 sat.min
+      if (interval.min < sat.min) {
+        // 依然在满意阈左侧：保持外边界 min，更新内边界 max
+        return { min: interval.min, max: sat.min };
+      }
+      // 已被满意阈覆盖：重置
       return { min: sat.min - 1, max: sat.min };
     }
+    // 右侧偏离：内边界固定在 sat.max
+    if (interval.max > sat.max) {
+      // 依然在满意阈右侧：保持外边界 max，更新内边界 min
+      return { min: sat.max, max: interval.max };
+    }
+    // 已被满意阈覆盖：重置
     return { min: sat.max, max: sat.max + 1 };
   });
 }

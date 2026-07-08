@@ -925,21 +925,26 @@ function RangeEditor({ selectedIds, ranges, onRangeChange }: { selectedIds: stri
               <tr key={id}>
                 <th>{indicator.name}{indicator.unit ? ` (${indicator.unit})` : ""}</th>
                 <td>
-                  <IntervalList
-                    intervals={range.satisfaction}
-                    onChange={(index, interval) =>
-                      onRangeChange(id, { ...range, satisfaction: range.satisfaction.map((item, itemIndex) => (itemIndex === index ? interval : item)) })
-                    }
-                  />
+                  {(() => {
+                    const invalid = range.satisfaction.some((s) => s.min != null && s.max != null && s.min > s.max);
+                    return (
+                      <div className={`interval-list${invalid ? " cell-error" : ""}`}>
+                        {range.satisfaction.map((interval, i) => (
+                          <span className="range-cell" key={i}>
+                            <NumberCell value={interval.min ?? 0} onChange={(v) => onRangeChange(id, { ...range, satisfaction: range.satisfaction.map((item, idx) => idx === i ? { ...item, min: v } : item) })} />
+                            <span>~</span>
+                            <NumberCell value={interval.max ?? 0} onChange={(v) => onRangeChange(id, { ...range, satisfaction: range.satisfaction.map((item, idx) => idx === i ? { ...item, max: v } : item) })} />
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td>
                   <div className="interval-list">
                     {range.tolerance.map((interval, i) => {
                       const sat = range.satisfaction[0];
-                      const isRight = sat != null && sat.max != null && interval.max != null && interval.max > sat.max;
-                      const isLeft = sat != null && sat.min != null && interval.min != null && interval.min < sat.min;
-                      const isInside = !isLeft && !isRight && sat != null && sat.min != null && sat.max != null && interval.min != null && interval.max != null;
-                      const isLeftSide = isLeft || (isInside && range.tolerance.length > 1 && i === 0);
+                      const isLeftSide = range.tolerance.length > 1 && i === 0;
                       return (
                         <span className="range-cell" key={i}>
                           {isLeftSide ? (
@@ -988,34 +993,6 @@ function WeightPreview({ selectedIds, weights }: { selectedIds: string[]; weight
       </div>
     </section>
   );
-}
-
-function IntervalList({ intervals, onChange }: { intervals: EvaluationInterval[]; onChange?: (index: number, interval: EvaluationInterval) => void }) {
-  return (
-    <div className="interval-list">
-      {intervals.map((interval, index) => (
-        onChange
-          ? <IntervalCells key={index} interval={interval} onChange={(next) => onChange(index, next)} />
-          : <IntervalCells key={index} interval={interval} />
-      ))}
-    </div>
-  );
-}
-
-function IntervalCells({ interval, onChange }: { interval: EvaluationInterval; onChange?: (interval: EvaluationInterval) => void }) {
-  return (
-    <span className="range-cell">
-      <BoundCell value={interval.min} fallback="0" onChange={onChange ? (value) => onChange({ ...interval, min: value }) : undefined} />
-      <span>~</span>
-      <BoundCell value={interval.max} fallback="+∞" onChange={onChange ? (value) => onChange({ ...interval, max: value }) : undefined} />
-    </span>
-  );
-}
-
-function BoundCell({ value, fallback, onChange }: { value: number | null; fallback: string; onChange?: (value: number) => void }) {
-  if (value === null) return <span className="bound-label">{fallback}</span>;
-  if (!onChange) return <span className="bound-label">{value}</span>;
-  return <NumberCell value={value} onChange={onChange} />;
 }
 
 function NumberCell({ value, onChange }: { value: number; onChange: (value: number) => void }) {
