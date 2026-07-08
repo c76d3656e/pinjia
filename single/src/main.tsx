@@ -11,6 +11,7 @@ import {
   DEFAULT_ALPHA,
   DEFAULT_BETA,
   DEFAULT_RANGES,
+  LEFT_SINGLE,
   syncToleranceBoundary,
   evaluate,
   evaluateSATOPSIS,
@@ -530,11 +531,11 @@ function RangeStep({
       <div className="card-header">
         <div>
           <h2>设置指标评价范围</h2>
-          <p>按新版广义满意度函数设置满意阈和容许偏离区间，区间外满意度为 0。</p>
+          <p>按照广义满意度函数，满意阈内满意度为1，容许偏离区间内满意度线性变化，区间外满意度为0。</p>
         </div>
         <button type="button" onClick={() => setRanges(defaultRanges())}>恢复默认范围</button>
       </div>
-      <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: { ...next, tolerance: syncToleranceBoundary(next.satisfaction, next.tolerance) } }))} />
+      <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: { ...next, tolerance: syncToleranceBoundary(next.satisfaction, next.tolerance, id) } }))} />
       <section className="alpha-section">
         <h3>安全惩罚因子</h3>
         <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 和 β 的可调范围为 (0, 1]。</p>
@@ -944,7 +945,7 @@ function RangeEditor({ selectedIds, ranges, onRangeChange }: { selectedIds: stri
                   <div className="interval-list">
                     {range.tolerance.map((interval, i) => {
                       const sat = range.satisfaction[0];
-                      const isLeftSide = range.tolerance.length > 1 && i === 0;
+                      const isLeftSide = (range.tolerance.length > 1 && i === 0) || (range.tolerance.length === 1 && LEFT_SINGLE.has(id));
                       return (
                         <span className="range-cell" key={i}>
                           {isLeftSide ? (

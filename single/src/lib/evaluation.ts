@@ -82,18 +82,21 @@ export const DEFAULT_RANGES: Record<string, EvaluationRange> = {
   safety_1: rangeAtMost(100, 200),
   safety_2: rangeAtMost(5, 8),
   economic_1: rangeAtMost(0.45, 0.55),
-  economic_2: { satisfaction: [finiteInterval(25, 30)], tolerance: [finiteInterval(30, 35)] },
+  economic_2: { satisfaction: [finiteInterval(25, 30)], tolerance: [finiteInterval(22, 25)] },
 };
 
+// 单区间且属于左侧偏离的指标（容差区间在满意阈下方）
+export const LEFT_SINGLE = new Set(["economic_2"]);
+
 // 同步容许偏离的内边界（紧贴满意阈的一侧），外边界保留用户编辑值不变
-export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTolerance: EvaluationInterval[]): EvaluationInterval[] {
+export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTolerance: EvaluationInterval[], id?: string): EvaluationInterval[] {
   const sat = satisfaction[0] ?? { min: null, max: null };
   return oldTolerance.map((interval, index) => {
     if (sat.min == null || sat.max == null || interval.min == null || interval.max == null) {
       return interval;
     }
-    // 按设计位置确定左右（索引0为左侧，其余为右侧）
-    const isLeftDesign = oldTolerance.length > 1 && index === 0;
+    // 按设计位置确定左右：两个区间时首左次右；单区间根据 LEFT_SINGLE 配置判定
+    const isLeftDesign = (oldTolerance.length > 1 && index === 0) || (oldTolerance.length === 1 && id != null && LEFT_SINGLE.has(id));
     if (isLeftDesign) {
       // 左侧偏离：内边界固定在 sat.min
       if (interval.min < sat.min) {
