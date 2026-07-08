@@ -938,15 +938,23 @@ function RangeEditor({ selectedIds, ranges, onRangeChange }: { selectedIds: stri
                       const sat = range.satisfaction[0];
                       const isRight = sat != null && sat.max != null && interval.max != null && interval.max > sat.max;
                       const isLeft = sat != null && sat.min != null && interval.min != null && interval.min < sat.min;
+                      // 满意度超出容差范围时，按中点位置推断左右
+                      const isInside = !isLeft && !isRight && sat != null && sat.min != null && sat.max != null && interval.min != null && interval.max != null;
+                      const satMin = sat?.min ?? 0;
+                      const satMax = sat?.max ?? 0;
+                      const tolMin = interval.min ?? 0;
+                      const tolMax = interval.max ?? 0;
+                      const effectiveRight = isRight || (isInside && (tolMin + tolMax) / 2 >= (satMin + satMax) / 2);
+                      const effectiveLeft = isLeft || (isInside && (tolMin + tolMax) / 2 < (satMin + satMax) / 2);
                       return (
                         <span className="range-cell" key={i}>
-                          {isLeft ? (
+                          {effectiveLeft ? (
                             <>
                               <NumberCell value={interval.min ?? 0} onChange={(v) => onRangeChange(id, { ...range, tolerance: range.tolerance.map((item, idx) => idx === i ? { ...item, min: v } : item) })} />
                               <span>~</span>
                               <span className="bound-label">{sat!.min}</span>
                             </>
-                          ) : isRight ? (
+                          ) : effectiveRight ? (
                             <>
                               <span className="bound-label">{sat!.max}</span>
                               <span>~</span>
