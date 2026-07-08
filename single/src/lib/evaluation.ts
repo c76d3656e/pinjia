@@ -89,13 +89,16 @@ export const DEFAULT_RANGES: Record<string, EvaluationRange> = {
 export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTolerance: EvaluationInterval[]): EvaluationInterval[] {
   const sat = satisfaction[0] ?? { min: null, max: null };
   return oldTolerance.map((interval) => {
-    // 左侧偏离：interval 在满意阈左边，max 应等于满意度最小值
-    if (sat.min != null && interval.max != null && interval.max <= sat.min) {
-      return { min: interval.min, max: sat.min };
+    if (sat.min == null || sat.max == null || interval.min == null || interval.max == null) {
+      return interval;
     }
-    // 右侧偏离：interval 在满意阈右边，min 应等于满意度最大值
-    if (sat.max != null && interval.min != null && interval.min >= sat.max) {
+    // 右侧偏离：区间整体在满意阈上方，min 应等于满意度最大值
+    if (interval.max > sat.max) {
       return { min: sat.max, max: interval.max };
+    }
+    // 左侧偏离：区间整体在满意阈下方，max 应等于满意度最小值
+    if (interval.min < sat.min) {
+      return { min: interval.min, max: sat.min };
     }
     return interval;
   });

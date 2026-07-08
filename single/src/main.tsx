@@ -936,8 +936,8 @@ function RangeEditor({ selectedIds, ranges, onRangeChange }: { selectedIds: stri
                   <div className="interval-list">
                     {range.tolerance.map((interval, i) => {
                       const sat = range.satisfaction[0];
-                      const isLeft = sat?.min != null && interval.max != null && interval.max <= sat.min;
-                      const isRight = sat?.max != null && interval.min != null && interval.min >= sat.max;
+                      const isRight = sat != null && sat.max != null && interval.max != null && interval.max > sat.max;
+                      const isLeft = sat != null && sat.min != null && interval.min != null && interval.min < sat.min;
                       return (
                         <span className="range-cell" key={i}>
                           {isLeft ? (
