@@ -88,7 +88,7 @@ export const DEFAULT_RANGES: Record<string, EvaluationRange> = {
 // 同步容许偏离的内边界（紧贴满意阈的一侧），外边界保留用户编辑值不变
 export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTolerance: EvaluationInterval[]): EvaluationInterval[] {
   const sat = satisfaction[0] ?? { min: null, max: null };
-  return oldTolerance.map((interval) => {
+  return oldTolerance.map((interval, index) => {
     if (sat.min == null || sat.max == null || interval.min == null || interval.max == null) {
       return interval;
     }
@@ -100,10 +100,9 @@ export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTol
     if (interval.min < sat.min) {
       return { min: interval.min, max: sat.min };
     }
-    // 满意阈已超出容差范围：自动扩展外边界（默认 +1/-1）
-    const tolMid = (interval.min + interval.max) / 2;
-    const satMid = (sat.min + sat.max) / 2;
-    if (tolMid < satMid) {
+    // 满意阈已超出容差范围：按索引推断左右（单个区间为右侧，两个区间时首左次右）
+    const isLeftSide = oldTolerance.length > 1 && index === 0;
+    if (isLeftSide) {
       return { min: sat.min - 1, max: sat.min };
     }
     return { min: sat.max, max: sat.max + 1 };
