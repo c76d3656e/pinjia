@@ -99,7 +99,7 @@ function finiteInterval(min: number | null, max: number | null): EvaluationInter
 
 function rangeAtMost(satisfactionMax: number, toleranceMax: number): EvaluationRange {
   return {
-    satisfaction: [finiteInterval(null, satisfactionMax)],
+    satisfaction: [finiteInterval(0, satisfactionMax)],
     tolerance: [finiteInterval(satisfactionMax, toleranceMax)],
   };
 }

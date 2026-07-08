@@ -535,12 +535,12 @@ function RangeStep({
       </div>
       <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: next }))} />
       <section className="alpha-section">
-        <h3>安全惩罚参数</h3>
-        <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，β 的可调范围为 (0, 1]。</p>
+        <h3>安全惩罚因子</h3>
+        <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 的可调范围为 (0, 1]，β 的可调范围为 (0, 1]。</p>
         <div className="alpha-control">
           <span>α</span>
-          <input type="range" min={0} max={0.5} step={0.01} value={alpha} onChange={(event) => setAlpha(Number(event.target.value))} />
-          <input type="number" min={0} max={0.5} step={0.01} value={alpha} onChange={(event) => setAlpha(clamp(Number(event.target.value) || 0, 0, 0.5))} />
+          <input type="range" min={0} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(Number(event.target.value))} />
+          <input type="number" min={0} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(clamp(Number(event.target.value) || 0, 0, 1))} />
           <span>β</span>
           <input type="range" min={0.01} max={1} step={0.01} value={beta} onChange={(event) => setBeta(Number(event.target.value))} />
           <input type="number" min={0.01} max={1} step={0.01} value={beta} onChange={(event) => setBeta(clamp(Number(event.target.value) || DEFAULT_BETA, 0.01, 1))} />
@@ -982,7 +982,7 @@ function IntervalList({ intervals, onChange }: { intervals: EvaluationInterval[]
 function IntervalCells({ interval, onChange }: { interval: EvaluationInterval; onChange: (interval: EvaluationInterval) => void }) {
   return (
     <span className="range-cell">
-      <BoundCell value={interval.min} fallback="-∞" onChange={(value) => onChange({ ...interval, min: value })} />
+      <BoundCell value={interval.min} fallback="0" onChange={(value) => onChange({ ...interval, min: value })} />
       <span>~</span>
       <BoundCell value={interval.max} fallback="+∞" onChange={(value) => onChange({ ...interval, max: value })} />
     </span>
