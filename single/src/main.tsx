@@ -11,6 +11,7 @@ import {
   DEFAULT_ALPHA,
   DEFAULT_BETA,
   DEFAULT_RANGES,
+  deriveTolerance,
   evaluate,
   evaluateSATOPSIS,
   EvaluationInterval,
@@ -533,7 +534,7 @@ function RangeStep({
         </div>
         <button type="button" onClick={() => setRanges(defaultRanges())}>恢复默认范围</button>
       </div>
-      <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: next }))} />
+      <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: { ...next, tolerance: deriveTolerance(next.satisfaction, id) } }))} />
       <section className="alpha-section">
         <h3>安全惩罚因子</h3>
         <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 和 β 的可调范围为 (0, 1]。</p>
@@ -934,9 +935,6 @@ function RangeEditor({ selectedIds, ranges, onRangeChange }: { selectedIds: stri
                 <td>
                   <IntervalList
                     intervals={range.tolerance}
-                    onChange={(index, interval) =>
-                      onRangeChange(id, { ...range, tolerance: range.tolerance.map((item, itemIndex) => (itemIndex === index ? interval : item)) })
-                    }
                   />
                 </td>
               </tr>
@@ -969,28 +967,31 @@ function WeightPreview({ selectedIds, weights }: { selectedIds: string[]; weight
   );
 }
 
-function IntervalList({ intervals, onChange }: { intervals: EvaluationInterval[]; onChange: (index: number, interval: EvaluationInterval) => void }) {
+function IntervalList({ intervals, onChange }: { intervals: EvaluationInterval[]; onChange?: (index: number, interval: EvaluationInterval) => void }) {
   return (
     <div className="interval-list">
       {intervals.map((interval, index) => (
-        <IntervalCells key={index} interval={interval} onChange={(next) => onChange(index, next)} />
+        onChange
+          ? <IntervalCells key={index} interval={interval} onChange={(next) => onChange(index, next)} />
+          : <IntervalCells key={index} interval={interval} />
       ))}
     </div>
   );
 }
 
-function IntervalCells({ interval, onChange }: { interval: EvaluationInterval; onChange: (interval: EvaluationInterval) => void }) {
+function IntervalCells({ interval, onChange }: { interval: EvaluationInterval; onChange?: (interval: EvaluationInterval) => void }) {
   return (
     <span className="range-cell">
-      <BoundCell value={interval.min} fallback="0" onChange={(value) => onChange({ ...interval, min: value })} />
+      <BoundCell value={interval.min} fallback="0" onChange={onChange ? (value) => onChange({ ...interval, min: value }) : undefined} />
       <span>~</span>
-      <BoundCell value={interval.max} fallback="+∞" onChange={(value) => onChange({ ...interval, max: value })} />
+      <BoundCell value={interval.max} fallback="+∞" onChange={onChange ? (value) => onChange({ ...interval, max: value }) : undefined} />
     </span>
   );
 }
 
-function BoundCell({ value, fallback, onChange }: { value: number | null; fallback: string; onChange: (value: number) => void }) {
+function BoundCell({ value, fallback, onChange }: { value: number | null; fallback: string; onChange?: (value: number) => void }) {
   if (value === null) return <span className="bound-label">{fallback}</span>;
+  if (!onChange) return <span className="bound-label">{value}</span>;
   return <NumberCell value={value} onChange={onChange} />;
 }
 
