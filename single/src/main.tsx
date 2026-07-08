@@ -11,7 +11,7 @@ import {
   DEFAULT_ALPHA,
   DEFAULT_BETA,
   DEFAULT_RANGES,
-  deriveTolerance,
+  syncToleranceBoundary,
   evaluate,
   evaluateSATOPSIS,
   EvaluationInterval,
@@ -534,7 +534,7 @@ function RangeStep({
         </div>
         <button type="button" onClick={() => setRanges(defaultRanges())}>恢复默认范围</button>
       </div>
-      <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: { ...next, tolerance: deriveTolerance(next.satisfaction, id) } }))} />
+      <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: { ...next, tolerance: syncToleranceBoundary(next.satisfaction, next.tolerance) } }))} />
       <section className="alpha-section">
         <h3>安全惩罚因子</h3>
         <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 和 β 的可调范围为 (0, 1]。</p>
@@ -933,9 +933,36 @@ function RangeEditor({ selectedIds, ranges, onRangeChange }: { selectedIds: stri
                   />
                 </td>
                 <td>
-                  <IntervalList
-                    intervals={range.tolerance}
-                  />
+                  <div className="interval-list">
+                    {range.tolerance.map((interval, i) => {
+                      const sat = range.satisfaction[0];
+                      const isLeft = sat?.min != null && interval.max != null && interval.max <= sat.min;
+                      const isRight = sat?.max != null && interval.min != null && interval.min >= sat.max;
+                      return (
+                        <span className="range-cell" key={i}>
+                          {isLeft ? (
+                            <>
+                              <NumberCell value={interval.min ?? 0} onChange={(v) => onRangeChange(id, { ...range, tolerance: range.tolerance.map((item, idx) => idx === i ? { ...item, min: v } : item) })} />
+                              <span>~</span>
+                              <span className="bound-label">{sat!.min}</span>
+                            </>
+                          ) : isRight ? (
+                            <>
+                              <span className="bound-label">{sat!.max}</span>
+                              <span>~</span>
+                              <NumberCell value={interval.max ?? 0} onChange={(v) => onRangeChange(id, { ...range, tolerance: range.tolerance.map((item, idx) => idx === i ? { ...item, max: v } : item) })} />
+                            </>
+                          ) : (
+                            <>
+                              <span className="bound-label">{interval.min ?? ""}</span>
+                              <span>~</span>
+                              <span className="bound-label">{interval.max ?? ""}</span>
+                            </>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </td>
               </tr>
             );

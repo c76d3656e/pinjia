@@ -85,34 +85,20 @@ export const DEFAULT_RANGES: Record<string, EvaluationRange> = {
   economic_2: { satisfaction: [finiteInterval(25, 30)], tolerance: [finiteInterval(30, 35)] },
 };
 
-// 各指标的容许偏离偏差量（自动跟随满意阈计算）
-const DEVIATIONS: Record<string, { low?: number; high?: number }> = {
-  technical_1: { high: 5 },
-  technical_2: { high: 0.5 },
-  technical_3: { high: 3 },
-  technical_4: { low: 2, high: 2 },
-  technical_5: { low: 0.5, high: 0.5 },
-  technical_6: { low: 0.2, high: 0.2 },
-  safety_1: { high: 100 },
-  safety_2: { high: 3 },
-  economic_1: { high: 0.1 },
-  economic_2: { high: 5 },
-};
-
-// 从满意阈自动推导容许偏离区间
-export function deriveTolerance(satisfaction: EvaluationInterval[], id: string): EvaluationInterval[] {
-  const dev = DEVIATIONS[id];
-  if (!dev) return [];
-  const result: EvaluationInterval[] = [];
-  for (const interval of satisfaction) {
-    if (dev.low != null && interval.min != null) {
-      result.push(finiteInterval(interval.min - dev.low, interval.min));
+// 同步容许偏离的内边界（紧贴满意阈的一侧），外边界保留用户编辑值不变
+export function syncToleranceBoundary(satisfaction: EvaluationInterval[], oldTolerance: EvaluationInterval[]): EvaluationInterval[] {
+  const sat = satisfaction[0] ?? { min: null, max: null };
+  return oldTolerance.map((interval) => {
+    // 左侧偏离：interval 在满意阈左边，max 应等于满意度最小值
+    if (sat.min != null && interval.max != null && interval.max <= sat.min) {
+      return { min: interval.min, max: sat.min };
     }
-    if (dev.high != null && interval.max != null) {
-      result.push(finiteInterval(interval.max, interval.max + dev.high));
+    // 右侧偏离：interval 在满意阈右边，min 应等于满意度最大值
+    if (sat.max != null && interval.min != null && interval.min >= sat.max) {
+      return { min: sat.max, max: interval.max };
     }
-  }
-  return result;
+    return interval;
+  });
 }
 
 const GRADE_SCORES = {
