@@ -536,11 +536,11 @@ function RangeStep({
       <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: next }))} />
       <section className="alpha-section">
         <h3>安全惩罚因子</h3>
-        <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 的可调范围为 (0, 1]，β 的可调范围为 (0, 1]。</p>
+        <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 和 β 的可调范围为 (0, 1]。</p>
         <div className="alpha-control">
           <span>α</span>
-          <input type="range" min={0} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(Number(event.target.value))} />
-          <input type="number" min={0} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(clamp(Number(event.target.value) || 0, 0, 1))} />
+          <input type="range" min={0.01} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(Number(event.target.value))} />
+          <input type="number" min={0.01} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(clamp(Number(event.target.value) || 0.01, 0.01, 1))} />
           <span>β</span>
           <input type="range" min={0.01} max={1} step={0.01} value={beta} onChange={(event) => setBeta(Number(event.target.value))} />
           <input type="number" min={0.01} max={1} step={0.01} value={beta} onChange={(event) => setBeta(clamp(Number(event.target.value) || DEFAULT_BETA, 0.01, 1))} />
