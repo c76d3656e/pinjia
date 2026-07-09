@@ -512,7 +512,7 @@ function RangeStep({
       <RangeEditor selectedIds={selectedIds} ranges={ranges} onRangeChange={(id, next) => setRanges((current) => ({ ...current, [id]: { ...next, tolerance: syncToleranceBoundary(next.satisfaction, next.tolerance, id) } }))} />
       <section className="alpha-section">
         <h3>安全惩罚因子</h3>
-        <p className="hint">P = 1 - α(1 - S_safe)^β。默认 α=0.25、β=1，α 和 β 的可调范围为 (0, 1]。</p>
+        <p className="hint">P = 1 - α(1 - S<sub>safe</sub>)^β。默认 α=0.25、β=1，α 和 β 的可调范围为 (0, 1]。</p>
         <div className="alpha-control">
           <span>α</span>
           <input type="range" min={0.01} max={1} step={0.01} value={alpha} onChange={(event) => setAlpha(Number(event.target.value))} />
@@ -654,7 +654,7 @@ function ResultStep({ result, weights, selectedIds, error }: { result: ReturnTyp
         <div><span>D⁺ (理想距)</span><strong>{result.topsis.dPlus.toFixed(4)}</strong></div>
         <div><span>D⁻ (负理想距)</span><strong>{result.topsis.dMinus.toFixed(4)}</strong></div>
         <div><span>C (TOPSIS)</span><strong>{result.topsis.cRaw.toFixed(4)}</strong></div>
-        <div><span>S_safe (安全满意度)</span><strong>{result.safety.sSafe.toFixed(4)}</strong></div>
+        <div><span>S<sub>safe</sub> (安全满意度)</span><strong>{result.safety.sSafe.toFixed(4)}</strong></div>
         <div><span>α (惩罚系数)</span><strong>{result.safety.alpha}</strong></div>
         <div><span>β (惩罚指数)</span><strong>{result.safety.beta}</strong></div>
         <div><span>P (惩罚因子)</span><strong>{result.safety.penalty.toFixed(4)}</strong></div>
