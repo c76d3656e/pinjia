@@ -651,8 +651,8 @@ function ResultStep({ result, weights, selectedIds, error }: { result: ReturnTyp
         ))}
       </div>
       <div className="score-board">
-        <div><span>理想距离</span><strong>{result.topsis.dPlus.toFixed(4)}</strong></div>
-        <div><span>负理想距离</span><strong>{result.topsis.dMinus.toFixed(4)}</strong></div>
+        <div><span>D⁺ (理想距)</span><strong>{result.topsis.dPlus.toFixed(4)}</strong></div>
+        <div><span>D⁻ (负理想距)</span><strong>{result.topsis.dMinus.toFixed(4)}</strong></div>
         <div><span>C (TOPSIS)</span><strong>{result.topsis.cRaw.toFixed(4)}</strong></div>
         <div><span>S_safe (安全满意度)</span><strong>{result.safety.sSafe.toFixed(4)}</strong></div>
         <div><span>α (惩罚系数)</span><strong>{result.safety.alpha}</strong></div>
