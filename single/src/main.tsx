@@ -13,7 +13,6 @@ import {
   DEFAULT_RANGES,
   LEFT_SINGLE,
   syncToleranceBoundary,
-  evaluate,
   evaluateSATOPSIS,
   EvaluationInterval,
   EvaluationRange,
@@ -25,7 +24,6 @@ import "./styles.css";
 
 type StepId = "indicators" | "weights" | "ranges" | "values" | "result";
 type WeightMethod = "equal" | "expert" | "ahp" | "fahp" | "entropy";
-type EvalMethod = "weighted" | "satopsis";
 
 const STEPS: Array<{ id: StepId; label: string }> = [
   { id: "indicators", label: "1. 指标选择" },
@@ -41,11 +39,6 @@ const METHOD_LABEL: Record<WeightMethod, string> = {
   ahp: "AHP",
   fahp: "FAHP",
   entropy: "熵权法",
-};
-
-const EVAL_METHOD_LABEL: Record<EvalMethod, string> = {
-  weighted: "FAHP",
-  satopsis: "SATOPSIS-FAHP",
 };
 
 function fullMatrix(size: number, diagonal: number): number[][] {
@@ -118,7 +111,6 @@ function App() {
   const [step, setStep] = useState<StepId>("indicators");
   const [selectedIds, setSelectedIds] = useState<string[]>(INDICATORS.map((indicator) => indicator.id));
   const [method, setMethod] = useState<WeightMethod>("fahp");
-  const [evalMethod, setEvalMethod] = useState<EvalMethod>("weighted");
   const [expertScores, setExpertScores] = useState(defaultExpertScores);
   const [ahpMatrix, setAhpMatrix] = useState(fullMatrix(INDICATORS.length, 1));
   const [fahpLevel1, setFahpLevel1] = useState(fullMatrix(CATEGORIES.length, 0.5));
@@ -185,14 +177,11 @@ function App() {
   const evaluationState = useMemo(() => {
     try {
       if (!Object.keys(weightState.weights).length) return { result: null, error: "" };
-      if (evalMethod === "satopsis") {
-        return { result: evaluateSATOPSIS(selectedIds, weightState.weights, ranges, measuredValues, alpha, beta), error: "" };
-      }
-      return { result: evaluate(selectedIds, weightState.weights, ranges, measuredValues), error: "" };
+      return { result: evaluateSATOPSIS(selectedIds, weightState.weights, ranges, measuredValues, alpha, beta), error: "" };
     } catch (err) {
       return { result: null, error: err instanceof Error ? err.message : String(err) };
     }
-  }, [alpha, beta, evalMethod, measuredValues, ranges, selectedIds, weightState.weights]);
+  }, [alpha, beta, measuredValues, ranges, selectedIds, weightState.weights]);
 
   const updateSelected = (id: string, checked: boolean) => {
     const next = checked ? [...selectedIds, id] : selectedIds.filter((item) => item !== id);
@@ -337,8 +326,6 @@ function App() {
           <WeightStep
             method={method}
             setMethod={setMethod}
-            evalMethod={evalMethod}
-            setEvalMethod={setEvalMethod}
             selectedIds={selectedIds}
             selected={selected}
             selectedCats={selectedCats}
@@ -369,7 +356,7 @@ function App() {
         ) : null}
 
         {step === "result" ? (
-          <ResultStep result={result} weights={weights} selectedIds={selectedIds} evalMethod={evalMethod} error={error} />
+          <ResultStep result={result} weights={weights} selectedIds={selectedIds} error={error} />
         ) : null}
       </section>
     </main>
@@ -423,8 +410,6 @@ function IndicatorStep({
 function WeightStep(props: {
   method: WeightMethod;
   setMethod: (method: WeightMethod) => void;
-  evalMethod: EvalMethod;
-  setEvalMethod: (method: EvalMethod) => void;
   selectedIds: string[];
   selected: ReturnType<typeof findIndicator>[];
   selectedCats: IndicatorCategory[];
@@ -460,17 +445,6 @@ function WeightStep(props: {
             </button>
           ))}
         </div>
-      </div>
-      <div className="eval-method-section">
-        <span className="eval-method-label">评价方法：</span>
-        <div className="method-tabs">
-          {(Object.keys(EVAL_METHOD_LABEL) as EvalMethod[]).map((key) => (
-            <button key={key} className={props.evalMethod === key ? "active" : ""} type="button" onClick={() => props.setEvalMethod(key)}>
-              {EVAL_METHOD_LABEL[key]}
-            </button>
-          ))}
-        </div>
-        {props.evalMethod === "satopsis" ? <p className="hint">SATOPSIS-FAHP：满意度函数 + 改进TOPSIS + 安全连续惩罚SCP</p> : <p className="hint">FAHP：5段分段打分 + 加权求和，无TOPSIS，无安全惩罚</p>}
       </div>
 
       {props.method === "equal" ? <p className="hint">等权重会将所有选中指标平均分配权重。</p> : null}
@@ -657,16 +631,14 @@ function HistoryDrawer({
   );
 }
 
-function ResultStep({ result, weights, selectedIds, evalMethod, error }: { result: ReturnType<typeof evaluate> | null; weights: Record<string, number>; selectedIds: string[]; evalMethod: EvalMethod; error: string }) {
+function ResultStep({ result, weights, selectedIds, error }: { result: ReturnType<typeof evaluateSATOPSIS> | null; weights: Record<string, number>; selectedIds: string[]; error: string }) {
   if (error) return <div className="notice error">{error}</div>;
   if (!result) return <div className="notice warning">请先完成指标、权重、范围和实测值输入。</div>;
-  const isSatopsis = evalMethod === "satopsis";
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h2>综合评价结果</h2>
-          <p>{isSatopsis ? "SATOPSIS-FAHP（满意度TOPSIS + 安全惩罚SCP）" : "FAHP（5段打分 + 加权求和）"}</p>
         </div>
         <span className="weight-total">权重和 {Object.values(weights).reduce((sum, value) => sum + value, 0).toFixed(6)}</span>
       </div>
@@ -678,41 +650,37 @@ function ResultStep({ result, weights, selectedIds, evalMethod, error }: { resul
           <div key={category.categoryId}><span>{category.categoryName}</span><strong>{category.score.toFixed(1)}</strong></div>
         ))}
       </div>
-      {isSatopsis ? (
-        <div className="score-board">
-          <div><span>D⁺ (距理想)</span><strong>{result.topsis.dPlus.toFixed(4)}</strong></div>
-          <div><span>D⁻ (距负理想)</span><strong>{result.topsis.dMinus.toFixed(4)}</strong></div>
-          <div><span>C (TOPSIS)</span><strong>{result.topsis.cRaw.toFixed(4)}</strong></div>
-          <div><span>S_safe (安全满意度)</span><strong>{result.safety.sSafe.toFixed(4)}</strong></div>
-          <div><span>α (惩罚系数)</span><strong>{result.safety.alpha}</strong></div>
-          <div><span>β (惩罚指数)</span><strong>{result.safety.beta}</strong></div>
-          <div><span>P (惩罚因子)</span><strong>{result.safety.penalty.toFixed(4)}</strong></div>
-        </div>
-      ) : null}
-      {isSatopsis ? (
-        <div className="table-wrap compact">
-          <table className="result-table">
-            <thead>
-              <tr>
-                <th>一级指标</th>
-                <th>一级权重</th>
-                <th>一级满意度</th>
-                <th>百分制</th>
+      <div className="score-board">
+        <div><span>理想距离</span><strong>{result.topsis.dPlus.toFixed(4)}</strong></div>
+        <div><span>负理想距离</span><strong>{result.topsis.dMinus.toFixed(4)}</strong></div>
+        <div><span>C (TOPSIS)</span><strong>{result.topsis.cRaw.toFixed(4)}</strong></div>
+        <div><span>S_safe (安全满意度)</span><strong>{result.safety.sSafe.toFixed(4)}</strong></div>
+        <div><span>α (惩罚系数)</span><strong>{result.safety.alpha}</strong></div>
+        <div><span>β (惩罚指数)</span><strong>{result.safety.beta}</strong></div>
+        <div><span>P (惩罚因子)</span><strong>{result.safety.penalty.toFixed(4)}</strong></div>
+      </div>
+      <div className="table-wrap compact">
+        <table className="result-table">
+          <thead>
+            <tr>
+              <th>一级指标</th>
+              <th>一级权重</th>
+              <th>一级满意度</th>
+              <th>百分制</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.categoryScores.map((category) => (
+              <tr key={category.categoryId}>
+                <td>{category.categoryName}</td>
+                <td>{(category.weight * 100).toFixed(2)}%</td>
+                <td>{categorySatisfaction(category).toFixed(4)}</td>
+                <td>{category.score.toFixed(2)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {result.categoryScores.map((category) => (
-                <tr key={category.categoryId}>
-                  <td>{category.categoryName}</td>
-                  <td>{(category.weight * 100).toFixed(2)}%</td>
-                  <td>{categorySatisfaction(category).toFixed(4)}</td>
-                  <td>{category.score.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="table-wrap">
         <table className="result-table">
           <thead>
@@ -720,17 +688,8 @@ function ResultStep({ result, weights, selectedIds, evalMethod, error }: { resul
               <th>指标名称</th>
               <th>实测值</th>
               <th>权重</th>
-              {isSatopsis ? (
-                <>
-                  <th>满意度</th>
-                  <th>加权满意度</th>
-                </>
-              ) : (
-                <>
-                  <th>得分</th>
-                  <th>加权得分</th>
-                </>
-              )}
+              <th>满意度</th>
+              <th>加权满意度</th>
               <th>等级</th>
             </tr>
           </thead>
@@ -740,17 +699,8 @@ function ResultStep({ result, weights, selectedIds, evalMethod, error }: { resul
                 <td>{row.indicator.name}</td>
                 <td>{row.value}</td>
                 <td>{(row.weight * 100).toFixed(2)}%</td>
-                {isSatopsis ? (
-                  <>
-                    <td>{row.satisfaction.toFixed(4)}</td>
-                    <td>{row.weightedSatisfaction.toFixed(4)}</td>
-                  </>
-                ) : (
-                  <>
-                    <td>{row.score.toFixed(2)}</td>
-                    <td>{(row.weightedScore ?? row.score * row.weight).toFixed(2)}</td>
-                  </>
-                )}
+                <td>{row.satisfaction.toFixed(4)}</td>
+                <td>{row.weightedSatisfaction.toFixed(4)}</td>
                 <td><span className={`grade-badge grade-${gradeClass(row.grade)}`}>{row.grade}</span></td>
               </tr>
             ))}

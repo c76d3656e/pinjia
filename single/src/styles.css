@@ -676,23 +676,6 @@ tbody th {
   font-size: 1.25rem;
 }
 
-.eval-method-section {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 14px;
-  background: var(--surface-2);
-}
-
-.eval-method-label {
-  font-weight: 700;
-  font-size: 0.95rem;
-  white-space: nowrap;
-}
-
 .alpha-section {
   border: 1px solid var(--line);
   border-radius: 8px;
